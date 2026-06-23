@@ -1479,7 +1479,7 @@ void NetworkClient::OnMessage(int from, NetworkMessage* msg, NetworkMessageType 
             GameState* gstate = GWorld->GetGameState();
             GameValue val = Poseidon::DeserializeScriptValue(in, ResolveClientNetworkObject, this);
             // The variable name is wire-controlled; require a well-formed, bounded
-            // identifier before touching the script var table (N-SEC-15).
+            // identifier before touching the script var table.
             if (!val.GetNil() && WireBounds::ValidIdentifier(name, 256))
             {
                 gstate->VarSet(name, val);

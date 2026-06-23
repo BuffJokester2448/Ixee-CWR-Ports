@@ -61,7 +61,12 @@ RString ComposeVersionString(const char* baseVersion, const char* effectiveTag)
 
 RString GetVersionTag()
 {
-    const char* buildTag = BuildInfo::VersionTag;
+    // CMake pre-resolves BuildInfo::VersionTag to "" for release builds (with
+    // ReleaseBuild=true), but ResolveVersionTag expects the raw tag and reads ""
+    // as "unset" -> falls back to the git sha. Pass the literal "release" so the
+    // resolver applies its release policy (bare version), instead of rendering
+    // e.g. 3.01-8a73ddc on a release build.
+    const char* buildTag = BuildInfo::ReleaseBuild ? "release" : BuildInfo::VersionTag;
     const char* gitSha = BuildInfo::GitSha;
     const bool isDemo = GApp != nullptr && GApp->IsDemo();
     const bool devMode = !BuildInfo::ReleaseBuild && AppConfig::Instance().DevMode();

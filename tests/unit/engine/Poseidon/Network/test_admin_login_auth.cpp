@@ -2,25 +2,16 @@
 #include <Poseidon/IO/ParamFile/ParamFile.hpp>
 #include <Poseidon/IO/Streams/QBStream.hpp>
 #include <Poseidon/IO/PreprocC/PreprocC.hpp>
-#include <Poseidon/Network/NetworkServerAuth.hpp> // the extracted engine predicate
+#include <Poseidon/Network/NetworkServerAuth.hpp>
 #include <cstring>
 #include <catch2/catch_message.hpp>
 #include <Poseidon/Foundation/Strings/RString.hpp>
 
-// Security PoC — dedicated-server admin login without a password
-// Fizzy CWR #126 / Neptune Project. Stock OFP servers granted server admin
-// ("gameMaster") to a client with NO password when the config omitted
-// `passwordAdmin`. The NCMTLogin handler now requires a configured, non-empty
-// `passwordAdmin` matched exactly, via Poseidon::AdminLoginPasswordAccepted
-// (NetworkServerAuth.hpp); these cases are the regression that keeps it closed.
-//
-// The real-world trigger needs no custom tooling: the stock client's built-in
-// `#login <anything>` chat command sends NCMTLogin (NetworkClientActions.cpp
-// :1010 "login"->CMDLogin, :1136-1141 -> NCMTLogin with the typed string).
-//
-// This PoC drives the REAL engine ParamFile parser (the same class the server
-// uses to parse server.cfg) and runs that exact decision against the engine
-// predicate — no socket, no transport, no Glob.
+// Regression tests for dedicated-server admin login authorization. Admin is
+// granted only when the server config defines a non-empty passwordAdmin and the
+// supplied password matches it exactly; a missing or empty entry grants nothing.
+// These drive the real ParamFile parser (the same class that parses server.cfg)
+// against the engine predicate Poseidon::AdminLoginPasswordAccepted.
 
 namespace
 {
@@ -44,9 +35,8 @@ ParamFile ParseServerCfg(const char* cfg)
     return pf;
 }
 
-// The authorization spec NCMTLogin enforces after the N-SEC-01 hardening: admin is
-// granted only when a non-empty passwordAdmin is configured and matched exactly; a
-// missing or empty entry grants nothing.
+// The authorization spec the login handler enforces: admin is granted only when
+// a non-empty passwordAdmin is configured and matched exactly.
 bool AdminLoginGranted(ParamFile& serverCfg, const char* providedPassword)
 {
     ParamEntry* entry = serverCfg.FindEntry("passwordAdmin");
@@ -63,10 +53,9 @@ bool AdminLoginGranted(ParamFile& serverCfg, const char* providedPassword)
 }
 } // namespace
 
-TEST_CASE("N-SEC-01: a server with no passwordAdmin grants admin to no one", "[security][poc][network][admin]")
+TEST_CASE("a server with no passwordAdmin grants admin to no one", "[network][admin]")
 {
-    // A realistic minimal dedicated-server config that simply forgot/omitted
-    // passwordAdmin (very common in the wild).
+    // A realistic minimal dedicated-server config that simply omits passwordAdmin.
     const char* cfgNoAdminPw = "hostname = \"My OFP Server\";\n"
                                "maxPlayers = 32;\n"
                                "voteThreshold = 0.5;\n";
@@ -74,27 +63,24 @@ TEST_CASE("N-SEC-01: a server with no passwordAdmin grants admin to no one", "[s
     ParamFile cfg = ParseServerCfg(cfgNoAdminPw);
     REQUIRE(cfg.FindEntry("passwordAdmin") == nullptr); // the precondition
 
-    // Broken-state delta: this used to accept ANY password (attacker -> gameMaster).
-    // The hardened engine predicate now rejects every login when no password is set.
     REQUIRE_FALSE(Poseidon::AdminLoginPasswordAccepted(cfg, ""));
     REQUIRE_FALSE(Poseidon::AdminLoginPasswordAccepted(cfg, "wrong"));
     REQUIRE_FALSE(Poseidon::AdminLoginPasswordAccepted(cfg, "literally anything"));
 }
 
-TEST_CASE("N-SEC-01: an empty passwordAdmin string grants admin to no one", "[security][poc][network][admin]")
+TEST_CASE("an empty passwordAdmin string grants admin to no one", "[network][admin]")
 {
-    // passwordAdmin present but empty — used to grant on an empty password.
     const char* cfgEmptyPw = "hostname = \"Server\";\n"
                              "passwordAdmin = \"\";\n";
 
     ParamFile cfg = ParseServerCfg(cfgEmptyPw);
     REQUIRE(cfg.FindEntry("passwordAdmin") != nullptr);
 
-    REQUIRE_FALSE(Poseidon::AdminLoginPasswordAccepted(cfg, "")); // empty no longer an open door
+    REQUIRE_FALSE(Poseidon::AdminLoginPasswordAccepted(cfg, ""));
     REQUIRE_FALSE(Poseidon::AdminLoginPasswordAccepted(cfg, "x"));
 }
 
-TEST_CASE("Control: a configured passwordAdmin gates admin correctly", "[security][poc][network][admin]")
+TEST_CASE("a configured passwordAdmin gates admin correctly", "[network][admin]")
 {
     const char* cfgWithPw = "hostname = \"Server\";\n"
                             "passwordAdmin = \"s3cret\";\n"
@@ -109,11 +95,10 @@ TEST_CASE("Control: a configured passwordAdmin gates admin correctly", "[securit
     REQUIRE(AdminLoginGranted(cfg, "s3cret"));       // correct -> admin
 }
 
-// Spec check for AdminLoginPasswordAccepted() (NetworkServerAuth.hpp).
-// AdminLoginGranted() above is the hardened authorization spec (post N-SEC-01);
-// this asserts the engine predicate matches it across a matrix of configs and
-// passwords. If the engine logic ever drifts from the spec, this fails.
-TEST_CASE("Refactor: AdminLoginPasswordAccepted equals the hardened auth spec", "[security][refactor][network][admin]")
+// AdminLoginGranted() above is the authorization spec; this asserts the engine
+// predicate matches it across a matrix of configs and passwords. If the engine
+// logic ever drifts from the spec, this fails.
+TEST_CASE("AdminLoginPasswordAccepted matches the authorization spec", "[network][admin]")
 {
     struct Case
     {

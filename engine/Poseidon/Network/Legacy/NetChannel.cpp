@@ -602,7 +602,7 @@ void NetChannelBasic::inputStatistics(NetMessage* msg)
     const MsgSerial ser = msg->getSerial();
     // ser is wire-controlled; ackMask.on(ser) grows the bit-mask and the inputMax
     // catch-up loop below iterates in proportion to ser's distance from the current
-    // window, so a far-out serial drives a huge allocation / spin (N-SEC-12). Legit
+    // window, so a far-out serial would drive a large allocation / long spin. Legit
     // serials sit within [ackMaskMin, inputMax] by the channel's own invariant; reject
     // anything outside a strictly wider window (wrap-aware signed deltas).
     if (!WireBounds::SerialWithinSpan(ser, ackMaskMin, inputMax, (int64_t)par.maxChannelBitMask))
@@ -963,8 +963,8 @@ void NetChannelBasic::inputStatistics(NetMessage* msg)
         // big acknowledgement bit-mask:
         int aPtr = 0;
         // ack[] is a flexible array; the loop below is otherwise bounded only by the
-        // attacker-supplied oldest/newest. Cap it at the ack words actually present in
-        // the packet so a crafted (oldest,newest) can't read past the buffer (N-SEC-13).
+        // wire-supplied oldest/newest. Cap it at the ack words actually present in the
+        // packet so the (oldest,newest) fields can't drive a read past the buffer.
         const int availableAckWords =
             WireBounds::TrailingElementCount((int)msg->getLength(), (int)sizeof(BigAckPacket), (int)sizeof(unsigned32));
         unsigned32 lMask;

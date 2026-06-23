@@ -1459,8 +1459,8 @@ void NetworkClient::EnqueueMsgNonGuaranteed(int to, NetworkMessage* msg, Network
 
 NetworkMessageFormatBase* NetworkClient::GetFormat(/*int client, */ int type)
 {
-    // A wire type is attacker-controlled; a negative type (NCTSmallUnsigned decodes
-    // a >INT_MAX varint into a negative int) must not index GMsgFormats[] below 0.
+    // A wire type is untrusted; a negative type (NCTSmallUnsigned decodes a >INT_MAX
+    // varint into a negative int) must not index GMsgFormats[] below 0.
     if (type < 0)
     {
         return nullptr;

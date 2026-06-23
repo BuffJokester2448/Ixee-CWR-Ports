@@ -72,9 +72,9 @@ public:
 	// Read an array / string element count, validated against the remaining input
 	// A wire-encoded array or string can never declare more elements than there are
 	// bytes left to read — every element occupies at least one byte. A count outside
-	// [0, GetRemaining()] is therefore malformed; rejecting it here turns an
-	// attacker-chosen count into a clean decode failure instead of an
-	// AutoArray::Resize() of negative or absurd length.
+	// [0, GetRemaining()] is therefore malformed; rejecting it here turns such a
+	// count into a clean decode failure instead of an AutoArray::Resize() of
+	// negative or absurd length.
 	bool GetCount(int &count, NetworkCompressionType compression)
 	{
 		if (!Get(count, compression)) return false;
@@ -95,8 +95,8 @@ protected:
 	{
 		if (size < 0) return false;
 		// Compare against the bytes remaining; never form `_pos + size`. That sum
-		// is 32-bit signed and an attacker-chosen size can overflow it negative,
-		// making a `bufferSize < _pos + size` guard wrongly report "in bounds".
+		// is 32-bit signed and a large size can overflow it negative, making a
+		// `bufferSize < _pos + size` guard wrongly report "in bounds".
 		// `_pos` only advances on a successful (bounded) read, so it is always in
 		// [0, total] and `total - _pos` cannot underflow.
 		int total = _externalBuffer ? _externalBufferSize : _buffer.Size();

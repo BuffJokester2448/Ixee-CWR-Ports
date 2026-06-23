@@ -490,7 +490,7 @@ class NetworkServer : public NetworkComponent
     int _gameMaster;
     // Latched true the first time an admin login is granted this session (never reset). A
     // session-scoped audit signal: lets a test observe an admin grant regardless of whether
-    // the grantee is still connected when checked (N-SEC-01 validation).
+    // the grantee is still connected when checked.
     bool _adminLoginGranted = false;
     // selected mission name
     RString _mission;

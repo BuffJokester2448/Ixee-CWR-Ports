@@ -29,9 +29,9 @@ inline bool ValidLength(int length, int cap)
     return length >= 0 && length <= cap;
 }
 
-// count * elemSize fits in a non-negative int. Guards the N-SEC-05 pattern where
-// an attacker count makes the allocation size wrap negative/small. Both inputs
-// must already be non-negative (pair with ValidCount); elemSize is a sizeof.
+// count * elemSize fits in a non-negative int, so an out-of-range count cannot
+// make the allocation size wrap negative or small. Both inputs must already be
+// non-negative (pair with ValidCount); elemSize is a sizeof.
 inline bool MulFitsInt(int count, int elemSize)
 {
     if (count < 0 || elemSize <= 0)
@@ -54,7 +54,7 @@ inline bool RangeInBounds(int offset, int span, int size)
 
 // Number of fixed-size trailing array elements that actually fit in a packet of
 // `payloadBytes` after a `headerBytes` header. Bounds a flexible-array-member loop
-// to the elements really present, rather than to attacker-supplied bounds (N-SEC-13).
+// to the elements really present, rather than to a wire-supplied count.
 inline int TrailingElementCount(int payloadBytes, int headerBytes, int elemBytes)
 {
     if (payloadBytes < headerBytes || elemBytes <= 0)
@@ -66,7 +66,7 @@ inline int TrailingElementCount(int payloadBytes, int headerBytes, int elemBytes
 
 // Whether a wrap-aware (unsigned32) `serial` lies within `span` of the window
 // [lo, hi]. Far-out serials drive allocation/iteration proportional to their
-// distance from the window, so the channel rejects them before acting (N-SEC-12).
+// distance from the window, so the channel rejects them before acting.
 // Deltas are computed as signed 32-bit so serial wrap is handled correctly.
 inline bool SerialWithinSpan(uint32_t serial, uint32_t lo, uint32_t hi, int64_t span)
 {
@@ -77,9 +77,9 @@ inline bool SerialWithinSpan(uint32_t serial, uint32_t lo, uint32_t hi, int64_t 
 
 // A wire array element count is acceptable to decode: non-negative and no larger
 // than the bytes left in the buffer. Each element consumes at least one byte, so
-// a count that exceeds the remaining bytes is impossible and a crafted huge count
-// can neither overflow the size computation nor force an out-of-band allocation
-// (N-SEC-05). This buffer bound subsumes any fixed element cap for UDP-sized packets.
+// a count that exceeds the remaining bytes is impossible, and an oversized count
+// can neither overflow the size computation nor force an out-of-band allocation.
+// This buffer bound subsumes any fixed element cap for UDP-sized packets.
 inline bool DecodeCountFits(int count, int remainingBytes)
 {
     return count >= 0 && count <= remainingBytes;
@@ -87,7 +87,8 @@ inline bool DecodeCountFits(int count, int remainingBytes)
 
 // A file-transfer segment is geometrically valid against the declared totals:
 // all sizes non-negative, the segment index inside the segment count, and the
-// byte range inside the file. Guards the ReceiveFileSegment OOB write (N-SEC-04).
+// byte range inside the file. Validates the geometry ReceiveFileSegment uses
+// before it indexes or copies.
 inline bool SegmentInBounds(int totSize, int totSegments, int curSegment, int offset, int dataSize)
 {
     if (totSize < 0 || totSegments < 0 || curSegment < 0 || offset < 0 || dataSize < 0)
@@ -104,8 +105,8 @@ inline bool SegmentInBounds(int totSize, int totSegments, int curSegment, int of
 // A wire-supplied name is a well-formed, length-bounded identifier: non-empty, at
 // most `maxLen` chars, first char a letter or underscore, the rest alphanumeric or
 // underscore. Used to reject malformed/oversized publicVariable names before they
-// reach the script var table (N-SEC-15); it does not (and cannot, in the engine)
-// decide whether a legitimately-named mission variable is one a client may set.
+// reach the script var table; it does not (and cannot, in the engine) decide
+// whether a legitimately-named mission variable is one a client may set.
 inline bool ValidIdentifier(const char* s, int maxLen)
 {
     if (!s || s[0] == '\0' || maxLen <= 0)

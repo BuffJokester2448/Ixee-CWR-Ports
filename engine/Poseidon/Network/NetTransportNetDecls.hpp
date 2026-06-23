@@ -617,8 +617,8 @@ class NetServer : public NetTranspServer
     // Magic number for application separation.
     int32 magicApp;
 
-    // Rate limiter for reflected enum replies, so the server can't be abused as a
-    // UDP amplification source (N-SEC-09). Accessed only under usrCs.
+    // Rate limiter for reflected enum replies, so the server's reply traffic stays
+    // bounded. Accessed only under usrCs.
     RateLimit::TokenBucket _enumReplyBucket;
 
     // Map a NetChannel to its player ID, or -1 if not found.

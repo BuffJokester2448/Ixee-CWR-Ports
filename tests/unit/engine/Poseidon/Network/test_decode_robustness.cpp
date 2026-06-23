@@ -8,23 +8,11 @@
 #include <Poseidon/Network/NetworkImpl.hpp>
 #include <Poseidon/Network/NetworkMessages.hpp>
 
-// Network-decoder hardening regressions.
-// These lock the memory-safety fixes that close the bug classes the coverage-
-// guided libFuzzer harness (apps/Fuzzer/fuzz_decode_msg) surfaced in
-// NetworkComponent::DecodeMessage. Each case drives the REAL engine with crafted
-// wire bytes and asserts the decoder rejects malformed input instead of reading
-// or allocating out of bounds. Revert any one fix and the matching case turns
-// from a clean rejection into an out-of-bounds access — a process abort here, an
-// ASan report under the fuzz binary.
-//
-//   GetFormat (NetworkServerIntegrity.cpp / NetworkClientActions.cpp): a negative
-//     wire type must not index GMsgFormats[] below zero.
-//   NetworkMessageRaw::Read (NetworkMessages.hpp): the bounds check must not form
-//     `_pos + size` — that 32-bit signed sum overflows and admits an OOB read.
-//   NetworkMessageRaw::GetCount (NetworkMessages.hpp): an array / string element
-//     count must be validated against the bytes remaining before driving Resize().
-//   IdStringTable::GetString (IdString.cpp): a string-table id must be bounded
-//     before it indexes the name array.
+// Robustness regressions for the network message decoder. Each case drives the
+// real DecodeMessage path with crafted wire bytes and asserts the decoder
+// rejects malformed input cleanly instead of reading or allocating past the
+// buffer. They lock the input validation in place so a later refactor can be
+// proven not to reopen it.
 
 namespace
 {
@@ -56,8 +44,7 @@ void PutBytes(std::vector<uint8_t>& buf, int n)
 }
 
 // Minimal concrete NetworkComponent that drives the real DecodeMessage with no
-// dispatch — mirrors apps/Fuzzer/fuzz_decode_msg.cpp's FuzzComponent, including
-// the shipping GetFormat with its negative-type guard.
+// dispatch, so a test can feed it raw bytes directly.
 class DecodeHarness : public NetworkComponent
 {
   public:
@@ -108,19 +95,18 @@ struct ProbeRaw : public NetworkMessageRaw
 };
 } // namespace
 
-TEST_CASE("decoder rejects a negative wire message type", "[security][network][oob][fuzz]")
+TEST_CASE("decoder rejects a negative wire message type", "[network][decode]")
 {
     // type decodes to -1 (0xFFFFFFFF varint), followed by a 4-byte time header.
-    // Without the guard GetFormat indexed GMsgFormats[-1] (global-buffer-overflow,
-    // ~300 fuzz reproducers); the guarded one returns nullptr and decode stops.
+    // GetFormat must return nullptr rather than index the format table with it.
     std::vector<uint8_t> msg;
     PutVarint(msg, 0xFFFFFFFFu); // (int)type == -1
     PutBytes(msg, 4);            // time
-    Harness().Decode(msg);       // must return without indexing GMsgFormats OOB
-    SUCCEED("negative wire type handled without an out-of-bounds table index");
+    Harness().Decode(msg);
+    SUCCEED("negative wire type handled without an out-of-range table index");
 }
 
-TEST_CASE("decoder accepts a well-formed empty aggregate", "[security][network][fuzz]")
+TEST_CASE("decoder accepts a well-formed empty aggregate", "[network][decode]")
 {
     // NMTMessages with a sub-message count of zero — the valid path through GetCount.
     std::vector<uint8_t> msg;
@@ -131,14 +117,14 @@ TEST_CASE("decoder accepts a well-formed empty aggregate", "[security][network][
     SUCCEED("empty aggregate decoded");
 }
 
-TEST_CASE("decoder stops on a truncated header", "[security][network][fuzz]")
+TEST_CASE("decoder stops on a truncated header", "[network][decode]")
 {
     std::vector<uint8_t> empty;
     Harness().Decode(empty); // no type byte -> header Get fails -> early return
     SUCCEED("empty buffer handled");
 }
 
-TEST_CASE("NetworkMessageRaw::GetCount bounds an element count to the input", "[security][network][fuzz]")
+TEST_CASE("NetworkMessageRaw::GetCount bounds an element count to the input", "[network][decode]")
 {
     SECTION("negative count rejected")
     {
@@ -170,18 +156,16 @@ TEST_CASE("NetworkMessageRaw::GetCount bounds an element count to the input", "[
     }
 }
 
-TEST_CASE("NetworkMessageRaw::Read bounds check is overflow-safe", "[security][network][oob][fuzz]")
+TEST_CASE("NetworkMessageRaw::Read bounds check is overflow-safe", "[network][decode]")
 {
     char buf[4] = {1, 2, 3, 4};
     char dst[8] = {};
 
-    SECTION("a size that overflows _pos + size is rejected")
+    SECTION("a size that overflows the position sum is rejected")
     {
         ProbeRaw raw(buf, sizeof(buf));
         char one;
         REQUIRE(raw.ProbeRead(&one, 1)); // advance _pos to 1
-        // _pos(1) + 0x7FFFFFFF overflows to INT_MIN; the old `bufSize < _pos+size`
-        // guard then reported "in bounds" and the memcpy ran off the end.
         REQUIRE_FALSE(raw.ProbeRead(dst, 0x7FFFFFFF));
     }
     SECTION("a negative size is rejected")
@@ -197,17 +181,14 @@ TEST_CASE("NetworkMessageRaw::Read bounds check is overflow-safe", "[security][n
     }
 }
 
-TEST_CASE("IdStringTable::GetString bounds the id before indexing", "[security][network][oob][fuzz]")
+TEST_CASE("IdStringTable::GetString bounds the id before indexing", "[network][decode]")
 {
     RStringB names[3] = {RStringB("alpha"), RStringB("bravo"), RStringB("charlie")};
     Poseidon::IdStringTable table(names, 3);
 
-    // A valid id resolves to a real entry.
+    // A valid id resolves to a real entry; out-of-range ids return an empty
+    // string instead of indexing the name array past its bounds.
     REQUIRE(table.GetString(0).GetLength() > 0);
-
-    // Out-of-range ids — a wire varint can decode negative or huge — return an
-    // empty string instead of indexing the name array out of bounds. The dominant
-    // fuzz cluster (~1220 reproducers) hit this via Get(RString, NCTStringGeneric).
     REQUIRE(table.GetString(-1).GetLength() == 0);
     REQUIRE(table.GetString(3).GetLength() == 0);
     REQUIRE(table.GetString(0x7FFFFFFF).GetLength() == 0);

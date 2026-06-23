@@ -870,9 +870,9 @@ PlayerIdentity* NetworkComponent::FindIdentity(int dpnid)
 
 int NetworkComponent::ReceiveFileSegment(TransferFileMessage& msg)
 {
-    // The declared geometry is wire-controlled. Reject it before any allocation
-    // or write so a crafted header can neither drive a giant Resize (DoS) nor
-    // index/memcpy outside the buffers (OOB write — N-SEC-04).
+    // The declared geometry is wire-controlled. Reject it before any allocation or
+    // write so a malformed header can neither drive a giant Resize nor index/copy
+    // outside the buffers.
     static const int kMaxTransferBytes = 256 * 1024 * 1024;
     static const int kMaxTransferSegments = 1024 * 1024;
     if (!WireBounds::SegmentInBounds(msg.totSize, msg.totSegments, msg.curSegment, msg.offset, msg.data.Size()) ||
@@ -909,7 +909,7 @@ int NetworkComponent::ReceiveFileSegment(TransferFileMessage& msg)
     ReceivingFile& file = _files[index];
 
     // A resumed transfer must match the geometry the buffers were allocated for;
-    // a later packet declaring a larger file must not write past them (N-SEC-04).
+    // a later packet declaring a larger file must not write past them.
     if (msg.curSegment >= file.fileSegments.Size() ||
         !WireBounds::RangeInBounds(msg.offset, msg.data.Size(), file.fileData.Size()))
     {

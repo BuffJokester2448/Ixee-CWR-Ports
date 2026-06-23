@@ -11,7 +11,7 @@
 
 TEST_CASE("QIStream::unget after EOF does not resurflat_quad the last char", "[qstream][input][fuzz]")
 {
-    // fuzz_paramfile RSS-amplification root cause: get() at EOF returns EOF without
+    // Regression: get() at EOF returns EOF without
     // advancing the cursor, so a following unget() used to decrement it anyway and
     // resurflat_quad the last real character -- a config array element loop then re-read
     // that character forever, growing the array to OOM.

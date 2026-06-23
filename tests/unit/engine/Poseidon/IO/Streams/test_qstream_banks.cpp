@@ -16,8 +16,8 @@ using namespace Poseidon;
 
 TEST_CASE("QFBank::open rejects an oversized encrypted-header size", "[qstream][bank][fuzz]")
 {
-    // fuzz_pbo regression: an encrypted PBO whose header-size ints are attacker-
-    // controlled. A negative headersEncodedSize became a near-2^64 Temp<char>
+    // Regression: an encrypted PBO whose header-size ints are wire-controlled. A
+    // negative headersEncodedSize became a near-2^64 Temp<char>
     // allocation in QFBank::Load (allocation-size-too-big). The size guard now
     // rejects it. Minimal PBO: empty-name terminator entry (magic=VersionMagic,
     // length/time 0) -> one "encryption" property -> headersSize, headersEncodedSize.

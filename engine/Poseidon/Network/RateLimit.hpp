@@ -14,10 +14,9 @@ namespace RateLimit
 // wrap-aware, so a 32-bit tick-count rollover is handled. Pure and clock-injected
 // so it can be unit-tested without a real timer.
 //
-// Used to cap the rate of reflected enum replies so a dedicated server can't be
-// abused as a UDP reflection/amplification source (N-SEC-09): a spoofed-source
-// enum request can still be answered, but only up to `burst` in a flood and
-// `ratePerSec` sustained — far below any useful amplification, far above the
+// Used to cap the rate of reflected enum replies so a dedicated server's reply
+// traffic stays bounded: an enum request is still answered, but only up to `burst`
+// in a burst and `ratePerSec` sustained — comfortably above the
 // one-request-per-refresh a legitimate server browser sends.
 struct TokenBucket
 {

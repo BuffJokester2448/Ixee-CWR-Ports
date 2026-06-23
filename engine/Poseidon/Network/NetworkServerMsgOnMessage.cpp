@@ -94,7 +94,7 @@ static bool CheckValidUpload(RString path, RString name)
     {
         return false;
     }
-    // Prefix match alone lets "<sandbox>/../../addons/x.pbo" climb out (N-SEC-03).
+    // A prefix match alone does not confine the path; reject any parent-directory escape.
     return !Poseidon::PathHasParentEscape(path);
 }
 
@@ -270,8 +270,8 @@ void NetworkServer::OnMessage(int from, NetworkMessage* msg, NetworkMessageType 
                 break;
             }
             // A client may only select its own slot; only an admin/bot may assign
-            // another player and change object ownership on its behalf. Without this
-            // the ChangeOwner below ran for any sender (N-SEC-11).
+            // another player and change object ownership on its behalf, so the
+            // ChangeOwner below is gated to the acting slot.
             if (!Poseidon::SelectPlayerAuthorized(from, pl.player, _gameMaster, _botClient))
             {
                 LOG_WARN(Network, "SelectPlayer: rejected from={} acting for player={}", from, pl.player);
@@ -1483,8 +1483,8 @@ void NetworkServer::OnNetworkCommand(int from, NetworkCommandMessage& cmd)
                         int size = cmd.content.Size() - cmd.content.GetPos();
                         _votings.Add(this, (char*)&subtype, sizeof(int), 0.9999, from, ptr, size, true);
                         // ptr is raw wire bytes, not guaranteed NUL-terminated; bound both the
-                        // read (%.*s precision) and the write (snprintf) so a long/unterminated
-                        // vote payload can't over-read the packet or overflow echo[] (N-SEC-06).
+                        // read (%.*s precision) and the write (snprintf) so a long or
+                        // unterminated vote payload stays within the packet and echo[].
                         if (size > 0)
                         {
                             size_t used = strlen(echo);
@@ -1529,7 +1529,7 @@ void NetworkServer::OnNetworkCommand(int from, NetworkCommandMessage& cmd)
                         int size = cmd.content.Size() - cmd.content.GetPos();
                         _votings.Add(this, (char*)&subtype, sizeof(int), _voteThreshold, from, ptr, size);
                         // ptr is wire data; the target player id is the first int — require it
-                        // to actually be present before dereferencing (N-SEC-06 OOB read).
+                        // to actually be present before dereferencing.
                         if (!WireBounds::RangeInBounds(0, sizeof(int), size))
                         {
                             break;
@@ -2338,9 +2338,8 @@ void NetworkServer::OnMessagePlayerRole(int from, NetworkMessageType type, Netwo
     int index = -1;
     ctx.IdxTransfer(indices->index, index);
     // The role index is wire-controlled and indexes _playerRoles all through this
-    // handler; the old PoseidonAssert compiled out under NDEBUG and never checked
-    // for negatives, giving an OOB read/write on a dedicated server (N-SEC-08).
-    // AtOrNull is release-checked, so an out-of-range index is dropped here.
+    // handler, so it must be range-checked at release. AtOrNull is release-checked,
+    // so an out-of-range index is dropped here.
     if (!_playerRoles.AtOrNull(index))
     {
         LOG_WARN(Network, "OnMessagePlayerRole: wire index {} out of range [0,{}) from {}", index, _playerRoles.Size(),

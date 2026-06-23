@@ -1,15 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
-using namespace Poseidon;
 #include <climits>
 #include <Poseidon/Foundation/Containers/Array.hpp>
 #include <Poseidon/Network/WireBounds.hpp>
 
-// Decode-check primitives for the table-driven dispatcher (RC2/RC3 closure).
-// These are the seam migrated message handlers route wire-read counts/lengths/
-// indices through, replacing the per-handler "trust the wire then Resize/memcpy/
-// arr[i]" pattern. Each predicate is tested at its boundary because that is
-// exactly where the attacker lives.
+using namespace Poseidon;
+
+// Decode-check primitives for the table-driven dispatcher. These are the seam
+// migrated message handlers route wire-read counts/lengths/indices through,
+// replacing the per-handler "trust the wire then Resize/memcpy/arr[i]" pattern.
+// Each predicate is tested at its boundary, where malformed input is caught.
 
 TEST_CASE("WireBounds::ValidCount caps and rejects negatives", "[network][dispatch][wirebounds]")
 {
@@ -24,8 +24,8 @@ TEST_CASE("WireBounds::MulFitsInt rejects overflowing count*size", "[network][di
 {
     REQUIRE(WireBounds::MulFitsInt(1000, 16));
     REQUIRE(WireBounds::MulFitsInt(0, 16));
-    // Broken-state delta: a naive `count*size` here wraps to a small/negative int
-    // and a downstream Resize under-allocates, then the loop writes past it.
+    // An unchecked `count*size` can wrap to a small or negative int, which would
+    // under-allocate a later Resize.
     REQUIRE_FALSE(WireBounds::MulFitsInt(INT_MAX, 16));
     REQUIRE_FALSE(WireBounds::MulFitsInt(INT_MAX / 4 + 1, 4));
     REQUIRE_FALSE(WireBounds::MulFitsInt(-1, 16));
@@ -47,8 +47,8 @@ TEST_CASE("WireBounds::RangeInBounds guards offset+span vs size", "[network][dis
 
 TEST_CASE("WireBounds::ValidIdentifier accepts well-formed names, rejects junk", "[network][dispatch][wirebounds]")
 {
-    // publicVariable name guard (N-SEC-15): a wire name must be a bounded identifier
-    // before it reaches the script var table.
+    // A wire-supplied name must be a bounded identifier before it is used as a
+    // script variable name.
     REQUIRE(WireBounds::ValidIdentifier("myVar", 256));
     REQUIRE(WireBounds::ValidIdentifier("_x", 256));
     REQUIRE(WireBounds::ValidIdentifier("a1_b2", 256));
@@ -58,7 +58,7 @@ TEST_CASE("WireBounds::ValidIdentifier accepts well-formed names, rejects junk",
     REQUIRE_FALSE(WireBounds::ValidIdentifier("", 256));       // empty
     REQUIRE_FALSE(WireBounds::ValidIdentifier("1abc", 256));   // leading digit
     REQUIRE_FALSE(WireBounds::ValidIdentifier("a b", 256));    // space
-    REQUIRE_FALSE(WireBounds::ValidIdentifier("a;drop", 256)); // punctuation/injection
+    REQUIRE_FALSE(WireBounds::ValidIdentifier("a;drop", 256)); // punctuation
     REQUIRE_FALSE(WireBounds::ValidIdentifier("a.b", 256));    // dot
 
     // Length bound: a 10-char name with maxLen 8 is rejected; within bound passes.
@@ -77,8 +77,8 @@ TEST_CASE("AutoArray::AtOrNull bounds-checks in release builds", "[foundation][c
     REQUIRE(*a.AtOrNull(0) == 10);
     REQUIRE(*a.AtOrNull(2) == 30);
 
-    // Broken-state delta: operator[] (AssertDebug) returns _data[i] with no check
-    // under NDEBUG; AtOrNull returns nullptr for the same out-of-range index.
+    // operator[] (AssertDebug) does not bounds-check under NDEBUG; AtOrNull returns
+    // nullptr for the same out-of-range index instead.
     REQUIRE(a.AtOrNull(3) == nullptr);
     REQUIRE(a.AtOrNull(-1) == nullptr);
     REQUIRE(a.AtOrNull(INT_MAX) == nullptr);

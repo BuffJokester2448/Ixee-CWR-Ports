@@ -42,9 +42,9 @@ set(POSEIDON_CORE_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/IO/ParamFile/test_paramfile_parsing.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/IO/ParamFile/test_paramfile_preprocessing.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/IO/ParamFile/test_paramfile_realworld.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/IO/ParamFile/test_server_admin_login_poc.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/Security/test_server_network_exploits_poc.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/Security/test_decoder_hardening.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/Network/test_admin_login_auth.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/Network/test_decode_robustness.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/engine/Poseidon/Network/test_network_predicate_parity.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/engine/Evaluator/test_evaluator_complex.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/engine/Evaluator/test_evaluator_data.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/engine/Evaluator/test_evaluator_edge.cpp
@@ -376,12 +376,12 @@ list(APPEND POSEIDON_TEST_SOURCES
     Network/test_ip_ban.cpp
     Network/test_ban_commands.cpp
     Network/test_network_server.cpp
-    Network/test_mp_join_validation.cpp
-    Network/test_master_server_version_tag.cpp
+    Network/test_mp_join.cpp
+    Network/test_master_server.cpp
     Network/test_network_dispatch.cpp
-    Network/test_network_script_value_codec.cpp
-    Network/test_wire_bounds.cpp
-    Network/test_transport_hardening.cpp
+    Network/test_script_codec.cpp
+    Network/test_wire_format.cpp
+    Network/test_transport_io.cpp
     Network/test_encoded_matrix3.cpp
     Network/test_chat_utf8_wire.cpp
     Network/Legacy/test_network_channel.cpp
