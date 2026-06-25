@@ -113,7 +113,21 @@ void InstallCrashHandler(const char*)
 #include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
+
+#ifdef __ANDROID__
+extern "C" {
+    void* iconv_open(const char* tocode, const char* fromcode) { return (void*)-1; }
+    size_t iconv(void* cd, char** inbuf, size_t* inbytesleft, char** outbuf, size_t* outbytesleft) { return (size_t)-1; }
+    int iconv_close(void* cd) { return -1; }
+    size_t fwrite_unlocked(const void* ptr, size_t size, size_t n, FILE* stream) {
+        return fwrite(ptr, size, n, stream);
+    }
+}
+#endif
+
+#ifndef __ANDROID__
 #include <execinfo.h>
+#endif
 #include <sys/resource.h>
 #include <link.h>
 
@@ -227,6 +241,7 @@ void handler(int sig, siginfo_t* info, void* /*ucontext*/)
     emit(fd, STDERR_FILENO, g_buildId[0] ? g_buildId : "unknown");
     emit(fd, STDERR_FILENO, "\n\nbacktrace:\n");
 
+#ifndef __ANDROID__
     void* frames[64];
     int n = backtrace(frames, 64);
     backtrace_symbols_fd(frames, n, STDERR_FILENO);
@@ -241,6 +256,7 @@ void handler(int sig, siginfo_t* info, void* /*ucontext*/)
         emitHex(fd, STDERR_FILENO, (unsigned long)frames[i]);
         emit(fd, STDERR_FILENO, "\n");
     }
+#endif
 
     // Module load bases — only to the file; keeps the terminal output short.
     if (fd >= 0)
@@ -314,10 +330,12 @@ void InstallCrashHandler(const char* crashDir)
 
     captureBuildId();
 
+#ifndef __ANDROID__
     // Warm up the libgcc unwinder so the in-handler backtrace() never dlopen()s (not
     // async-signal-safe). One call here primes it.
     void* warm[4];
     (void)backtrace(warm, 4);
+#endif
 
     // Let the OS write a core too (best effort; honours the system's core_pattern).
     rlimit core{RLIM_INFINITY, RLIM_INFINITY};

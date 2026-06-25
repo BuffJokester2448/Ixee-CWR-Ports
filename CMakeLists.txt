@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 
 project(CWR
     VERSION 1.0.0
@@ -153,7 +153,9 @@ configure_file(
 )
 include_directories(${CMAKE_BINARY_DIR}/generated)
 
-find_package(Catch2 CONFIG REQUIRED)
+if(NOT ANDROID)
+    find_package(Catch2 CONFIG REQUIRED)
+endif()
 find_package(enkiTS CONFIG REQUIRED)
 
 # dist/<preset>/{game,viewer,tools} - auto-create on build
@@ -177,16 +179,26 @@ endif()
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${DIST_PRESET_NAME}")
 
 add_subdirectory(engine/Poseidon)
-add_subdirectory(engine/PoseidonGL33)
+if(TRUE)
+    add_subdirectory(engine/PoseidonGLES32)
+else()
+    add_subdirectory(engine/PoseidonGL33)
+endif()
 add_subdirectory(engine/PoseidonOpenAL)
 add_subdirectory(engine/PoseidonFormats)
-add_subdirectory(tests/unit/engine/Poseidon/Foundation)
+if(BUILD_TESTING)
+    add_subdirectory(tests/unit/engine/Poseidon/Foundation)
+endif()
 add_subdirectory(apps/tools/Evaluator)
-add_subdirectory(tests/unit/apps/Evaluator)
-add_subdirectory(tests/unit/engine/Poseidon)
+if(BUILD_TESTING)
+    add_subdirectory(tests/unit/apps/Evaluator)
+    add_subdirectory(tests/unit/engine/Poseidon)
+endif()
 add_subdirectory(apps/cwr/GameBase)
 add_subdirectory(apps/cwr/Server)
-add_subdirectory(tests/unit/apps/Server)
+if(BUILD_TESTING)
+    add_subdirectory(tests/unit/apps/Server)
+endif()
 
 if(POSEIDON_BUILD_FUZZERS)
     add_subdirectory(apps/fuzzers/Fuzzer)
@@ -201,10 +213,11 @@ add_subdirectory(apps/tools/Studio)
 # tests/unit/apps/Studio's ImGui-Test-Engine UI suite is quarantined under
 # License-restricted UI test sources are not part of this public tree.
 add_subdirectory(apps/tetris/Tetris)
-add_subdirectory(tests/unit/apps/Tetris)
-
-include(${CMAKE_SOURCE_DIR}/cmake/TridentCTest.cmake)
-register_trident_integration_ctests()
+if(BUILD_TESTING)
+    add_subdirectory(tests/unit/apps/Tetris)
+    include(${CMAKE_SOURCE_DIR}/cmake/TridentCTest.cmake)
+    register_trident_integration_ctests()
+endif()
 
 # ── Precompiled header ───────────────────────────────────────────────────────
 # The Poseidon static lib precompiles PoseidonPCH.hpp (see engine/Poseidon).
@@ -215,7 +228,7 @@ register_trident_integration_ctests()
 # into the PCH, so a shared blob would be rejected. Trivial 1-2 TU targets
 # (TcPbo, TcLister) and the standalone PoseidonFormats C-API are excluded.
 set(POSEIDON_PCH_TARGETS
-    PoseidonGL33 PoseidonOpenAL GameBase
+    PoseidonGL33 PoseidonGLES32 PoseidonOpenAL GameBase
     PoseidonGame PoseidonGameDemo PoseidonServer PoseidonTools
     PoseidonStudio PoseidonEvaluator PoseidonTetris
     PoseidonTests PoseidonCoreTests PoseidonFoundationTests
@@ -260,30 +273,32 @@ set(ANALYSIS_TARGETS
 )
 
 foreach(target ${ANALYSIS_TARGETS})
-    get_target_property(target_sources ${target} SOURCES)
-    get_target_property(target_source_dir ${target} SOURCE_DIR)
-    
-    foreach(source ${target_sources})
-        # Convert relative paths to absolute
-        if(NOT IS_ABSOLUTE ${source})
-            set(source "${target_source_dir}/${source}")
-        endif()
+    if(TARGET ${target})
+        get_target_property(target_sources ${target} SOURCES)
+        get_target_property(target_source_dir ${target} SOURCE_DIR)
         
-        # Skip PCH files
-        if(source MATCHES "pch\\.(cpp|hpp)$")
-            continue()
-        endif()
-        
-        # Collect .cpp files for clang-tidy (analyzes headers transitively)
-        if(source MATCHES "\\.cpp$")
-            list(APPEND ALL_CPP_SOURCES ${source})
-        endif()
-        
-        # Collect .cpp and .hpp files for clang-format
-        if(source MATCHES "\\.(cpp|hpp)$")
-            list(APPEND ALL_FORMAT_SOURCES ${source})
-        endif()
-    endforeach()
+        foreach(source ${target_sources})
+            # Convert relative paths to absolute
+            if(NOT IS_ABSOLUTE ${source})
+                set(source "${target_source_dir}/${source}")
+            endif()
+            
+            # Skip PCH files
+            if(source MATCHES "pch\\.(cpp|hpp)$")
+                continue()
+            endif()
+            
+            # Collect .cpp files for clang-tidy (analyzes headers transitively)
+            if(source MATCHES "\\.cpp$")
+                list(APPEND ALL_CPP_SOURCES ${source})
+            endif()
+            
+            # Collect .cpp and .hpp files for clang-format
+            if(source MATCHES "\\.(cpp|hpp)$")
+                list(APPEND ALL_FORMAT_SOURCES ${source})
+            endif()
+        endforeach()
+    endif()
 endforeach()
 
 # Add Poseidon sources to formatting

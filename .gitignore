@@ -76,3 +76,9 @@ target/
 !docs/**/*.png
 !tests/missions/screenshot/**/*.bmp
 !tests/missions/screenshot/**/*.png
+vcpkg/
+android/app/build/
+android/.gradle/
+test.cpp
+android/app/.cxx/
+android/build/

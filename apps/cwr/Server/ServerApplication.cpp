@@ -229,9 +229,6 @@ bool ServerApplication::InitializeServerEngine()
 
 void ServerApplication::OnPreEngineInit()
 {
-    // Eager commit and reduced decommit keep allocator contention predictable on server threads.
-    mi_option_set(mi_option_eager_commit, 1);
-    mi_option_set(mi_option_eager_commit_delay, 1);
 }
 
 void ServerApplication::ConfigureBankMerge()

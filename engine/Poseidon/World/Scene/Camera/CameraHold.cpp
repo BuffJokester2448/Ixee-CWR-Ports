@@ -21,7 +21,9 @@
 #include <Poseidon/Graphics/Textures/TexturePreload.hpp>
 #include <Poseidon/Foundation/Framework/Log.hpp>
 #include <sys/types.h>
+#ifndef __ANDROID__
 #include <sys/timeb.h>
+#endif
 #include <time.h>
 
 namespace Poseidon

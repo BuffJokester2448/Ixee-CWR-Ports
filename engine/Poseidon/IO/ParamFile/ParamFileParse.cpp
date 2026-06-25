@@ -14,6 +14,7 @@
 #include <Poseidon/Foundation/Strings/RString.hpp>
 #include <Poseidon/Foundation/Types/Pointers.hpp>
 #include <Poseidon/Foundation/platform.hpp>
+#include <limits.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -281,10 +282,11 @@ LSError ParamFile::Parse(const char* name)
     SetName(name);
 
     // Log full absolute path of file being parsed
-    char fullPath[512];
 #ifdef _WIN32
+    char fullPath[512];
     ::GetFullPathNameA(name, sizeof(fullPath), fullPath, nullptr);
 #else
+    char fullPath[PATH_MAX];
     if (!realpath(name, fullPath))
         strncpy(fullPath, name, sizeof(fullPath) - 1);
 #endif

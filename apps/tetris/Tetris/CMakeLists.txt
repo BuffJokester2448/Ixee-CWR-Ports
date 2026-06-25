@@ -56,9 +56,16 @@ if(WIN32)
     )
 else()
     target_link_libraries(PoseidonTetris PRIVATE
-        -Wl,--start-group GameBase PoseidonGL33 Poseidon PoseidonOpenAL -Wl,--end-group
-        pthread dl
+        -Wl,--start-group GameBase Poseidon PoseidonOpenAL
     )
+    if(NOT ANDROID)
+        target_link_libraries(PoseidonTetris PRIVATE PoseidonGL33)
+    endif()
+    target_link_libraries(PoseidonTetris PRIVATE -Wl,--end-group)
+    if(NOT ANDROID)
+        target_link_libraries(PoseidonTetris PRIVATE pthread)
+    endif()
+    target_link_libraries(PoseidonTetris PRIVATE dl)
 endif()
 
 if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))

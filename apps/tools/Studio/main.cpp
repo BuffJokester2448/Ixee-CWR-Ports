@@ -5,7 +5,9 @@
 #include <Poseidon/Graphics/Textures/TextureBank.hpp>
 #include <CLI/CLI.hpp>
 #include <SDL3/SDL.h>
+#ifndef __ANDROID__
 #include <SDL3/SDL_main.h>
+#endif
 #include <algorithm>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>

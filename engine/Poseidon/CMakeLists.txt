@@ -260,7 +260,11 @@ target_link_libraries(Poseidon PUBLIC
     spdlog::spdlog
 )
 if(NOT WIN32)
-    target_link_libraries(Poseidon PUBLIC pthread dl)
+    if(ANDROID)
+        target_link_libraries(Poseidon PUBLIC dl)
+    else()
+        target_link_libraries(Poseidon PUBLIC pthread dl)
+    endif()
 endif()
 
 if(WIN32)

@@ -54,9 +54,11 @@ else()
         GameBase
         Poseidon
         -Wl,--end-group
-        pthread
-        dl
     )
+    if(NOT ANDROID)
+        target_link_libraries(PoseidonServer PRIVATE pthread)
+    endif()
+    target_link_libraries(PoseidonServer PRIVATE dl)
 endif()
 
 # Set subsystem to Console (Windows only)

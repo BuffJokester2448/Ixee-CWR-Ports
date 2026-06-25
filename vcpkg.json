@@ -2,9 +2,16 @@
   "name": "cwr",
   "version": "1.0",
   "dependencies": [
-    "catch2",
+    {
+      "name": "catch2",
+      "platform": "!android"
+    },
     "cjson",
-    { "name": "curl", "features": ["ssl"] },
+    {
+      "name": "curl",
+      "default-features": false,
+      "features": ["mbedtls", "non-http"]
+    },
     "glslang",
     "cli11",
     "stb",

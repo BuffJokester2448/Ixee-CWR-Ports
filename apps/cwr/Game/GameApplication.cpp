@@ -1456,7 +1456,9 @@ void GameApplication::RegisterAudioBackends()
 void GameApplication::RegisterGraphicsBackends()
 {
     RegisterDummyGraphicsBackend();
+#ifndef __ANDROID__
     RegisterGL33GraphicsBackend();
+#endif
 }
 
 bool GameApplication::InitializeInput()

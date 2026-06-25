@@ -61,13 +61,19 @@ else()
     target_link_libraries(PoseidonGame PRIVATE
         -Wl,--start-group
         GameBase
-        PoseidonGL33
         Poseidon
         PoseidonOpenAL
-        -Wl,--end-group
-        pthread
-        dl
     )
+    if(NOT ANDROID)
+        target_link_libraries(PoseidonGame PRIVATE PoseidonGL33)
+    endif()
+    target_link_libraries(PoseidonGame PRIVATE
+        -Wl,--end-group
+    )
+    if(NOT ANDROID)
+        target_link_libraries(PoseidonGame PRIVATE pthread)
+    endif()
+    target_link_libraries(PoseidonGame PRIVATE dl)
 endif()
 
 # Use WINDOWS subsystem (WIN32 flag); AttachConsole at runtime handles CLI output

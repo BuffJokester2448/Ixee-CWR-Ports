@@ -441,7 +441,7 @@ void QIHTTPStream::open(const char* url, const char* proxyServer)
         return;
     }
     server.sin_family = AF_INET;
-    if (fcntl(sock, F_SETFL, FNDELAY) < 0)
+    if (fcntl(sock, F_SETFL, O_NONBLOCK) < 0)
     {
         LOG_DEBUG(Core, "HTTP: Cannot set FNDELAY mode!");
         ::close(sock);

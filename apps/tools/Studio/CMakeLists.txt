@@ -42,8 +42,11 @@ else()
         -Wl,--start-group
         Poseidon PoseidonOpenAL
         -Wl,--end-group
-        pthread dl
     )
+    if(NOT ANDROID)
+        target_link_libraries(PoseidonStudio PRIVATE pthread)
+    endif()
+    target_link_libraries(PoseidonStudio PRIVATE dl)
 endif()
 
 target_include_directories(PoseidonStudio PRIVATE
