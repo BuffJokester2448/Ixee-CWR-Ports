@@ -66,6 +66,13 @@ static PacFormat DstFormat(PacFormat srcFormat, int dxt)
             if (static_cast<EngineGLES32*>(GEngine)->CanDXT(1))
                 return srcFormat;
             return PacARGB1555;
+        case PacDXT2:
+        case PacDXT3:
+        case PacDXT4:
+        case PacDXT5:
+            if (static_cast<EngineGLES32*>(GEngine)->CanDXT(1))
+                return srcFormat;
+            return PacARGB8888;
         default:
             LOG_DEBUG(Graphics, "Unsupported source format {}", (int)srcFormat);
             return srcFormat;
@@ -75,6 +82,60 @@ static PacFormat DstFormat(PacFormat srcFormat, int dxt)
 void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableDXT)
 {
     desc.compressed = false;
+#ifdef __ANDROID__
+    // gles does not support GL_BGRA or _REV packed pixel types.
+    // all ARGB formats get uploaded as GL_RGBA + GL_UNSIGNED_BYTE
+    // after a cpu byte swap in the upload path.
+    // s3tc/dxt is decompressed to rgba on cpu since most mobile gpus
+    // (mali in particular) do not support the extension.
+    switch (format)
+    {
+        case PacDXT1:
+        case PacDXT2:
+        case PacDXT3:
+        case PacDXT4:
+        case PacDXT5:
+            // decompress on cpu, upload as RGBA8
+            desc.internalFormat = GL_RGBA8;
+            desc.pixelFormat = GL_RGBA;
+            desc.pixelType = GL_UNSIGNED_BYTE;
+            break;
+        case PacARGB1555:
+            desc.internalFormat = GL_RGBA8;
+            desc.pixelFormat = GL_RGBA;
+            desc.pixelType = GL_UNSIGNED_BYTE;
+            break;
+        case PacRGB565:
+            desc.internalFormat = GL_RGB565;
+            desc.pixelFormat = GL_RGB;
+            desc.pixelType = GL_UNSIGNED_SHORT_5_6_5;
+            break;
+        case PacARGB4444:
+            desc.internalFormat = GL_RGBA8;
+            desc.pixelFormat = GL_RGBA;
+            desc.pixelType = GL_UNSIGNED_BYTE;
+            break;
+        case PacAI88:
+            desc.internalFormat = GL_RG8;
+            desc.pixelFormat = GL_RG;
+            desc.pixelType = GL_UNSIGNED_BYTE;
+            break;
+        case PacARGB8888:
+            desc.internalFormat = GL_RGBA8;
+            desc.pixelFormat = GL_RGBA;
+            desc.pixelType = GL_UNSIGNED_BYTE;
+            break;
+        case PacP8:
+            desc.internalFormat = GL_R8;
+            desc.pixelFormat = GL_RED;
+            desc.pixelType = GL_UNSIGNED_BYTE;
+            Fail("Palette textures obsolete");
+            break;
+        default:
+            Poseidon::Foundation::ErrorMessage("Texture has bad pixel format (GL).");
+            break;
+    }
+#else
     switch (format)
     {
         case PacDXT1:
@@ -126,6 +187,7 @@ void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableD
             Poseidon::Foundation::ErrorMessage("Texture has bad pixel format (GL).");
             break;
     }
+#endif
 }
 
 #define MIN_MIP_SIZE 4

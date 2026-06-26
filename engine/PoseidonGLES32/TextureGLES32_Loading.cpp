@@ -13,6 +13,72 @@
 extern int MipmapSizeGLES32(PacFormat format, int w, int h);
 extern void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableDXT);
 
+#ifdef __ANDROID__
+// convert packed ARGB pixel data to RGBA bytes for gles upload.
+// returns true if conversion happened (and outBuf was filled), false if
+// no conversion is needed (format is already gles native).
+static bool ConvertToRGBA(PacFormat fmt, const void* src, void* dst, int w, int h)
+{
+    int pixels = w * h;
+    const uint8_t* s8 = static_cast<const uint8_t*>(src);
+    uint8_t* d8 = static_cast<uint8_t*>(dst);
+
+    switch (fmt)
+    {
+        case PacARGB1555:
+        {
+            // packed uint16: a(1) r(5) g(5) b(5) in little endian
+            const uint16_t* sp = reinterpret_cast<const uint16_t*>(src);
+            for (int i = 0; i < pixels; i++)
+            {
+                uint16_t v = sp[i];
+                int r = ((v >> 10) & 0x1F) * 255 / 31;
+                int g = ((v >> 5) & 0x1F) * 255 / 31;
+                int b = (v & 0x1F) * 255 / 31;
+                int a = (v >> 15) ? 255 : 0;
+                d8[i * 4 + 0] = static_cast<uint8_t>(r);
+                d8[i * 4 + 1] = static_cast<uint8_t>(g);
+                d8[i * 4 + 2] = static_cast<uint8_t>(b);
+                d8[i * 4 + 3] = static_cast<uint8_t>(a);
+            }
+            return true;
+        }
+        case PacARGB4444:
+        {
+            // packed uint16: a(4) r(4) g(4) b(4) in little endian
+            const uint16_t* sp = reinterpret_cast<const uint16_t*>(src);
+            for (int i = 0; i < pixels; i++)
+            {
+                uint16_t v = sp[i];
+                int a = ((v >> 12) & 0xF) * 17;
+                int r = ((v >> 8) & 0xF) * 17;
+                int g = ((v >> 4) & 0xF) * 17;
+                int b = (v & 0xF) * 17;
+                d8[i * 4 + 0] = static_cast<uint8_t>(r);
+                d8[i * 4 + 1] = static_cast<uint8_t>(g);
+                d8[i * 4 + 2] = static_cast<uint8_t>(b);
+                d8[i * 4 + 3] = static_cast<uint8_t>(a);
+            }
+            return true;
+        }
+        case PacARGB8888:
+        {
+            // memory layout on LE: B(0) G(1) R(2) A(3), need R G B A
+            for (int i = 0; i < pixels; i++)
+            {
+                d8[i * 4 + 0] = s8[i * 4 + 2]; // R
+                d8[i * 4 + 1] = s8[i * 4 + 1]; // G
+                d8[i * 4 + 2] = s8[i * 4 + 0]; // B
+                d8[i * 4 + 3] = s8[i * 4 + 3]; // A
+            }
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+#endif
+
 void TextureGLES32::InitDesc(TextureDescGLES32& desc, int levelMin, bool enableDXT)
 {
     memset(&desc, 0, sizeof(desc));
@@ -130,8 +196,20 @@ int TextureGLES32::UploadToGPU(SurfaceInfoGLES32& surface, int levelMin)
         }
         else
         {
+#ifdef __ANDROID__
+            // gles cannot handle GL_BGRA or _REV pixel types. convert
+            // packed ARGB formats to RGBA bytes on the cpu before upload.
+            int rgbaSize = mip._w * mip._h * 4;
+            std::vector<uint8_t> rgbaBuf(rgbaSize);
+            const void* uploadPtr = pixelData.Data();
+            if (ConvertToRGBA(dstFmt, pixelData.Data(), rgbaBuf.data(), mip._w, mip._h))
+                uploadPtr = rgbaBuf.data();
+            glTexSubImage2D(GL_TEXTURE_2D, aLevel, 0, 0, mip._w, mip._h, fmtDesc.pixelFormat, fmtDesc.pixelType,
+                            uploadPtr);
+#else
             glTexSubImage2D(GL_TEXTURE_2D, aLevel, 0, 0, mip._w, mip._h, fmtDesc.pixelFormat, fmtDesc.pixelType,
                             pixelData.Data());
+#endif
             GLenum err = glGetError();
             if (err != GL_NO_ERROR)
             {

@@ -395,7 +395,11 @@ class EngineGLES32 : public Engine
     static constexpr bool _can565 = true;
     static constexpr bool _can88 = false;
     static constexpr bool _can8888 = true;
+#ifdef __ANDROID__
+    static constexpr int _dxtFormats = 0; // no s3tc on most mobile gpus
+#else
     static constexpr int _dxtFormats = 0x3E; // DXT1..DXT5
+#endif
     static constexpr bool _hasStencilBuffer = true;
     static constexpr bool _canDetailTex = true;
     static constexpr bool _canZBias = true;

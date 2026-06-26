@@ -110,6 +110,7 @@ class GraphicsEngineFactory
 
 void RegisterDummyGraphicsBackend();
 void RegisterGL33GraphicsBackend();
+void RegisterGLES32GraphicsBackend();
 
 } // namespace Poseidon
 #endif // POSEIDON_GRAPHICS_GRAPHICSENGINEFACTORY_HPP
