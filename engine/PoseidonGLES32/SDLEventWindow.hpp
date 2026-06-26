@@ -31,6 +31,44 @@ class SDLEventWindow
     bool _altEnterConsumed = false;
     bool _fullscreenTransitioning = false; // blocks phantom Alt+Enter during transition
 
+    struct TouchState {
+        SDL_FingerID id = -1;
+        float startX = 0.0f, startY = 0.0f;
+        float lastX = 0.0f, lastY = 0.0f;
+        bool isMove = false;
+        bool isLook = false;
+        bool isMoving = false;
+        bool moveW = false, moveA = false, moveS = false, moveD = false;
+    };
+    TouchState _touches[10];
+
+    TouchState* GetTouch(SDL_FingerID id) {
+        for (int i = 0; i < 10; ++i) {
+            if (_touches[i].id == id) return &_touches[i];
+        }
+        return nullptr;
+    }
+
+    TouchState* AllocTouch(SDL_FingerID id) {
+        for (int i = 0; i < 10; ++i) {
+            if (_touches[i].id == -1) {
+                _touches[i].id = id;
+                return &_touches[i];
+            }
+        }
+        return nullptr;
+    }
+
+    void ReleaseTouch(TouchState* t) {
+        if (!t) return;
+        t->id = -1;
+        if (t->moveW) { SDLInput_BufferKeyEvent(SDL_SCANCODE_W, false, Poseidon::Foundation::GlobalTickCount()); t->moveW = false; }
+        if (t->moveA) { SDLInput_BufferKeyEvent(SDL_SCANCODE_A, false, Poseidon::Foundation::GlobalTickCount()); t->moveA = false; }
+        if (t->moveS) { SDLInput_BufferKeyEvent(SDL_SCANCODE_S, false, Poseidon::Foundation::GlobalTickCount()); t->moveS = false; }
+        if (t->moveD) { SDLInput_BufferKeyEvent(SDL_SCANCODE_D, false, Poseidon::Foundation::GlobalTickCount()); t->moveD = false; }
+        t->isMove = t->isLook = t->isMoving = false;
+    }
+
   public:
     // Attach to an existing SDL window (does not take ownership).
     // Sets GApp->m_appActive and acquires mouse.
@@ -248,6 +286,67 @@ class SDLEventWindow
                 SDLInput_GamepadAdded(event.gdevice.which);
             else if (event.type == SDL_EVENT_GAMEPAD_REMOVED)
                 SDLInput_GamepadRemoved(event.gdevice.which);
+            else if (event.type == SDL_EVENT_FINGER_DOWN)
+            {
+                TouchState* t = AllocTouch(event.tfinger.fingerID);
+                if (t) {
+                    t->startX = event.tfinger.x;
+                    t->startY = event.tfinger.y;
+                    t->lastX = event.tfinger.x;
+                    t->lastY = event.tfinger.y;
+                    
+                    if (event.tfinger.x < 0.5f) {
+                        t->isMove = true;
+                    } else {
+                        t->isLook = true;
+                    }
+                }
+            }
+            else if (event.type == SDL_EVENT_FINGER_UP || event.type == SDL_EVENT_FINGER_CANCELED)
+            {
+                TouchState* t = GetTouch(event.tfinger.fingerID);
+                if (t) {
+                    if (t->isLook && !t->isMoving) {
+                        // It was a tap on the right side! Send left click.
+                        SDLInput_BufferMouseButton(1, true);
+                        SDLInput_BufferMouseButton(1, false);
+                    }
+                    ReleaseTouch(t);
+                }
+            }
+            else if (event.type == SDL_EVENT_FINGER_MOTION)
+            {
+                TouchState* t = GetTouch(event.tfinger.fingerID);
+                if (t) {
+                    float dx = event.tfinger.x - t->lastX;
+                    float dy = event.tfinger.y - t->lastY;
+                    t->lastX = event.tfinger.x;
+                    t->lastY = event.tfinger.y;
+                    
+                    float distX = event.tfinger.x - t->startX;
+                    float distY = event.tfinger.y - t->startY;
+                    float distSq = distX * distX + distY * distY;
+                    if (distSq > 0.0004f) { // roughly 0.02f squared
+                        t->isMoving = true;
+                    }
+                    
+                    if (t->isLook) {
+                        float speedX = _width * 1.5f; // sensitivity multiplier
+                        float speedY = _height * 1.5f;
+                        SDLInput_BufferMouseMotion(dx * speedX, dy * speedY);
+                    } else if (t->isMove && t->isMoving) {
+                        bool wantW = distY < -0.05f;
+                        bool wantS = distY > 0.05f;
+                        bool wantA = distX < -0.05f;
+                        bool wantD = distX > 0.05f;
+                        
+                        if (wantW != t->moveW) { SDLInput_BufferKeyEvent(SDL_SCANCODE_W, wantW, Poseidon::Foundation::GlobalTickCount()); t->moveW = wantW; }
+                        if (wantA != t->moveA) { SDLInput_BufferKeyEvent(SDL_SCANCODE_A, wantA, Poseidon::Foundation::GlobalTickCount()); t->moveA = wantA; }
+                        if (wantS != t->moveS) { SDLInput_BufferKeyEvent(SDL_SCANCODE_S, wantS, Poseidon::Foundation::GlobalTickCount()); t->moveS = wantS; }
+                        if (wantD != t->moveD) { SDLInput_BufferKeyEvent(SDL_SCANCODE_D, wantD, Poseidon::Foundation::GlobalTickCount()); t->moveD = wantD; }
+                    }
+                }
+            }
         }
     }
 
