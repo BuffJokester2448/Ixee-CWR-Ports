@@ -392,8 +392,12 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
         SDL_SetWindowPosition(_sdlWindow, placement.posX, placement.posY);
     }
 
+#ifdef __ANDROID__
+    SDL_GetWindowSizeInPixels(_sdlWindow, &_w, &_h);
+#else
     _w = placement.width;
     _h = placement.height;
+#endif
     if (placement.refreshHz > 0)
         _refreshRate = placement.refreshHz;
 
