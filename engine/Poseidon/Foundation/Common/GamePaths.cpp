@@ -37,6 +37,8 @@ static std::string getSystemTempDir(const char* codename)
     if (tmp)
         return std::string(tmp) + "\\" + lower;
     return "C:\\Temp\\" + lower;
+#elif defined(__ANDROID__)
+    return getUserCacheDir(codename) + "/tmp";
 #else
     return "/tmp/" + lower;
 #endif

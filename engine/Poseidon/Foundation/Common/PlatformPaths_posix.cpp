@@ -36,24 +36,64 @@ std::string getXdgDir(const char* envVar, const char* defaultSuffix, const char*
 
 } // anonymous namespace
 
+#ifdef __ANDROID__
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
+#endif
+
 namespace Poseidon::Foundation {
 
+#ifdef __ANDROID__
+static std::string getAndroidPrefPath(const char* appName) {
+    std::string result;
+    char* prefPath = SDL_GetPrefPath("cwr", appName);
+    if (prefPath) {
+        result = prefPath;
+        SDL_free(prefPath);
+        // remove trailing slash if present for consistency
+        if (!result.empty() && result.back() == '/') {
+            result.pop_back();
+        }
+    } else {
+        result = std::string("/data/local/tmp/") + appName;
+    }
+    ensureDirectory(result);
+    return result;
+}
+#endif
+
 std::string getUserConfigDir(const char* appName) {
+#ifdef __ANDROID__
+    return getAndroidPrefPath(appName);
+#else
     return getXdgDir("XDG_CONFIG_HOME", ".config", appName);
+#endif
 }
 
 std::string getUserDataDir(const char* appName) {
+#ifdef __ANDROID__
+    return getAndroidPrefPath(appName);
+#else
     return getXdgDir("XDG_DATA_HOME", ".local/share", appName);
+#endif
 }
 
 std::string getUserCacheDir(const char* appName) {
+#ifdef __ANDROID__
+    return getAndroidPrefPath(appName);
+#else
     return getXdgDir("XDG_CACHE_HOME", ".cache", appName);
+#endif
 }
 
 std::string getUserDocumentsDir(const char* appName) {
+#ifdef __ANDROID__
+    return getAndroidPrefPath(appName);
+#else
     // Linux has no per-game "Documents" convention; the XDG data dir is the
     // correct, non-roaming home for user content (mods, editor missions).
     return getXdgDir("XDG_DATA_HOME", ".local/share", appName);
+#endif
 }
 
 } // namespace Poseidon::Foundation

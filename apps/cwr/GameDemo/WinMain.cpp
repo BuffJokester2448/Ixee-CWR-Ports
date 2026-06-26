@@ -24,11 +24,20 @@ int PASCAL WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 
 #ifdef __ANDROID__
 #include <SDL3/SDL_main.h>
+#include <SDL3/SDL_filesystem.h>
+#include <cstdlib>
 #endif
 
 int main(int argc, char* argv[])
 {
     Poseidon::Foundation::InstallCrashHandler(nullptr);
+#ifdef __ANDROID__
+    char* prefPath = SDL_GetPrefPath("cwr", "Poseidon");
+    if (prefPath) {
+        setenv("TMPDIR", prefPath, 1);
+        SDL_free(prefPath);
+    }
+#endif
     GameDemoApplication app;
     return app.Run(argc, argv);
 }
