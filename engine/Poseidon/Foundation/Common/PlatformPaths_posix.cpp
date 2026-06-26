@@ -54,6 +54,11 @@ static std::string getAndroidPrefPath(const char* appName) {
         if (!result.empty() && result.back() == '/') {
             result.pop_back();
         }
+        // SDL3 on Android ignores org and app, so we must append it manually
+        if (appName && appName[0] != '\0') {
+            result += "/";
+            result += appName;
+        }
     } else {
         result = std::string("/data/local/tmp/") + appName;
     }
