@@ -36,7 +36,10 @@ using Poseidon::CreateEngineDummy;
 // Thread-safe error string
 static thread_local std::string g_lastError;
 static bool g_initialized = false;
-static std::mutex g_initMutex;
+static std::mutex& GetInitMutex() {
+    static std::mutex* m = new std::mutex();
+    return *m;
+}
 
 static void SetError(const std::string& msg) { g_lastError = msg; }
 static void ClearError() { g_lastError.clear(); }
@@ -113,7 +116,7 @@ PF_API int pf_init_step(int step) {
 }
 
 PF_API int pf_init(void) {
-    std::lock_guard<std::mutex> lock(g_initMutex);
+    std::lock_guard<std::mutex> lock(GetInitMutex());
     if (g_initialized) return 1;
     Poseidon::Foundation::CurrentAppFrameFunctions = &g_appFrame;
     SetMemorySystemReady(true);
@@ -125,7 +128,7 @@ PF_API int pf_init(void) {
 }
 
 PF_API void pf_shutdown(void) {
-    std::lock_guard<std::mutex> lock(g_initMutex);
+    std::lock_guard<std::mutex> lock(GetInitMutex());
     g_initialized = false;
 }
 

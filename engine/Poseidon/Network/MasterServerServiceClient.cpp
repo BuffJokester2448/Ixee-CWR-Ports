@@ -1089,7 +1089,10 @@ bool DownloadMasterServerServiceFile(const char* url, const char* proxyServer, c
 
 namespace
 {
-std::mutex g_serverTokenMutex;
+static std::mutex& GetServerTokenMutex() {
+    static std::mutex* m = new std::mutex();
+    return *m;
+}
 std::string g_serverToken;
 std::string g_serverTokenPath;
 
@@ -1114,7 +1117,7 @@ void LoadServerTokenLocked()
 
 std::string CurrentServerToken()
 {
-    std::lock_guard<std::mutex> lock(g_serverTokenMutex);
+    std::lock_guard<std::mutex> lock(GetServerTokenMutex());
     return g_serverToken;
 }
 
@@ -1124,7 +1127,7 @@ void StoreIssuedServerToken(const std::string& token)
     {
         return;
     }
-    std::lock_guard<std::mutex> lock(g_serverTokenMutex);
+    std::lock_guard<std::mutex> lock(GetServerTokenMutex());
     g_serverToken = token;
     if (!g_serverTokenPath.empty())
     {
@@ -1149,7 +1152,7 @@ void CaptureIssuedServerToken(const std::string& responseBody)
 
 void SetMasterServerServiceTokenStore(const char* tokenFilePath)
 {
-    std::lock_guard<std::mutex> lock(g_serverTokenMutex);
+    std::lock_guard<std::mutex> lock(GetServerTokenMutex());
     g_serverTokenPath = tokenFilePath != nullptr ? tokenFilePath : "";
     LoadServerTokenLocked();
 }

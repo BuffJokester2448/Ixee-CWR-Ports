@@ -13,7 +13,10 @@ namespace Poseidon::Dev::Perf::Trace
 namespace
 {
 
-std::mutex g_mtx;
+static std::mutex& GetMtx() {
+    static std::mutex* m = new std::mutex();
+    return *m;
+}
 std::FILE* g_file = nullptr;
 bool g_firstEvent = true;
 int64_t g_baseUs = 0;
@@ -95,7 +98,7 @@ void WriteEscapedString(std::FILE* f, const char* s)
 
 void FlushOnExit()
 {
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (g_file)
     {
         std::fclose(g_file);
@@ -113,7 +116,7 @@ bool IsEnabled()
 
 void Disable()
 {
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (g_file)
     {
         std::fclose(g_file);
@@ -124,7 +127,7 @@ void Disable()
 
 bool Enable(const char* path)
 {
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (g_file)
     {
         // Re-enable with a new path: close the existing file first so
@@ -260,7 +263,7 @@ void PushComplete(const char* cat, const char* name, int64_t tsUs, int64_t durat
     {
         return;
     }
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (!g_file)
     {
         return;
@@ -276,7 +279,7 @@ void PushBegin(const char* cat, const char* name, int64_t tsUs, const char* args
     {
         return;
     }
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (!g_file)
     {
         return;
@@ -290,7 +293,7 @@ void PushEnd(const char* cat, const char* name, int64_t tsUs)
     {
         return;
     }
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (!g_file)
     {
         return;
@@ -304,7 +307,7 @@ void PushCounter(const char* cat, const char* name, int64_t tsUs, int64_t value)
     {
         return;
     }
-    std::lock_guard<std::mutex> lock(g_mtx);
+    std::lock_guard<std::mutex> lock(GetMtx());
     if (!g_file)
     {
         return;
