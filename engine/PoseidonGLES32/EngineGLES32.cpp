@@ -391,9 +391,9 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     }
 
     // Load OpenGL function pointers via GLAD
-    if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress))
+    if (!gladLoadGLES2((GLADloadfunc)SDL_GL_GetProcAddress))
     {
-        LOG_ERROR(Graphics, "GLES32: gladLoadGL failed");
+        LOG_ERROR(Graphics, "GLES32: gladLoadGLES2 failed");
         _glContext = nullptr;
         return;
     }

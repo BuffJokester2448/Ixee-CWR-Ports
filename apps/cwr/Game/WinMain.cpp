@@ -21,6 +21,10 @@ int PASCAL WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 #include "GameApplication.hpp"
 #include <Poseidon/Foundation/Platform/CrashHandler.hpp>
 
+#ifdef __ANDROID__
+#include <SDL3/SDL_main.h>
+#endif
+
 int main(int argc, char* argv[])
 {
     Poseidon::Foundation::InstallCrashHandler(nullptr);

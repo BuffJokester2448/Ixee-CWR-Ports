@@ -23,7 +23,11 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
 #include <SDL3/SDL.h>
+#ifdef __ANDROID__
+#include <glad/gles2.h>
+#else
 #include <glad/gl.h>
+#endif
 
 #include <Poseidon/Dev/Debug/DebugOverlay.hpp>
 #include <Poseidon/Dev/Debug/DebugCheats.hpp>

@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef __ANDROID__
+#include <glad/gles2.h>
+#else
 #include <glad/gl.h>
+#endif
 
 // Per-draw pipeline GL state helpers that don't naturally fit into
 // a per-mode bundle (blend / depth / cull have their own headers).
@@ -71,11 +75,15 @@ inline void EnableDepthTest()
 }
 inline void DisableDepthClamp()
 {
+#ifndef __ANDROID__
     glDisable(GL_DEPTH_CLAMP);
+#endif
 }
 inline void EnableDepthClamp()
 {
+#ifndef __ANDROID__
     glEnable(GL_DEPTH_CLAMP);
+#endif
 }
 
 // glClearColor wrapper — packs the four channels for callers that

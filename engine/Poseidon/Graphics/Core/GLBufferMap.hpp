@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef __ANDROID__
+#include <glad/gles2.h>
+#else
 #include <glad/gl.h>
+#endif
 
 // Buffer-mapping helpers with the usage hint baked into the API name.
 //
@@ -42,9 +46,14 @@ inline void* MapDynamicWriteInvalidate(GLenum target, GLintptr offset, GLsizeipt
     return glMapBufferRange(target, offset, length, kFlags);
 }
 
-inline void* MapStaticWriteOnce(GLenum target)
+inline void* MapStaticWriteOnce(GLenum target, GLsizeiptr length)
 {
+#ifdef __ANDROID__
+    return glMapBufferRange(target, 0, length, GL_MAP_WRITE_BIT);
+#else
+    (void)length;
     return glMapBuffer(target, GL_WRITE_ONLY);
+#endif
 }
 
 } // namespace render::buf

@@ -12,5 +12,8 @@ class Engine;
 // GL33 backend constructor entry-point.  Args mirror the constructor signature.
 Engine* CreateEngineGL33(int w, int h, bool windowed, int bpp);
 
+// GLES32 backend constructor entry-point.
+Engine* CreateEngineGLES32(int w, int h, bool windowed, int bpp);
+
 } // namespace Poseidon
 #endif

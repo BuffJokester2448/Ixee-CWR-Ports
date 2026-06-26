@@ -488,12 +488,14 @@ void EngineGLES32::Init3DState()
     // Use D3D-compatible clip space: Z ∈ [0, 1] instead of OpenGL's default [-1, 1].
     // This matches the projection matrix convention used by D3D11 and avoids
     // halving the depth buffer precision.
+#if defined(GLAD_GL_ARB_clip_control)
     if (GLAD_GL_ARB_clip_control)
     {
         glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
         LOG_DEBUG(Graphics, "GLES32: glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE) enabled");
     }
     else
+#endif
     {
         LOG_WARN(Graphics, "GLES32: GL_ARB_clip_control not available — depth precision will be reduced");
     }

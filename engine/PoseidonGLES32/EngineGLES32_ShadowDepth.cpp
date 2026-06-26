@@ -481,34 +481,10 @@ void EngineGLES32::RenderShadowDepthScene(const float* lightVPs, const float* sp
     _shadowMapActive = true;
 }
 
-bool EngineGLES32::DumpShadowMap(const char* path)
+bool EngineGLES32::DumpShadowMap(const char* /*path*/)
 {
-    if (!_glContext || !path || !_shadowMapActive || !s_arrTex || _shadowMapRes <= 0 || _shadowCascades < 1)
-        return false;
-    const int res = _shadowMapRes;
-    // Read the whole array and dump cascade 0 (the tightest, near cascade).
-    std::vector<float> all(static_cast<size_t>(res) * res * _shadowCascades, 1.0f);
-    GLint prevTex = 0;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D_ARRAY, &prevTex);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, s_arrTex);
-    glGetTexImage(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, all.data());
-    glBindTexture(GL_TEXTURE_2D_ARRAY, static_cast<GLuint>(prevTex));
-    const float* depth = all.data(); // layer 0
-
-    std::vector<uint8_t> gray(static_cast<size_t>(res) * res);
-    for (int y = 0; y < res; y++)
-    {
-        const float* srcRow = depth + static_cast<size_t>(res - 1 - y) * res; // bottom-origin -> top-down
-        uint8_t* dstRow = gray.data() + static_cast<size_t>(y) * res;
-        for (int x = 0; x < res; x++)
-        {
-            float d = srcRow[x];
-            dstRow[x] =
-                (d >= 0.999f) ? static_cast<uint8_t>(35) : static_cast<uint8_t>((0.15f + (1.0f - d) * 0.85f) * 255.0f);
-        }
-    }
-    return ::PNGWriter::WritePNG(path, res, res, 1, gray.data());
-}
+    return false;
+};
 
 bool EngineGLES32::ShadowMapCacheSelfTest()
 {

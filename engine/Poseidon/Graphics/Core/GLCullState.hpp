@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef __ANDROID__
+#include <glad/gles2.h>
+#else
 #include <glad/gl.h>
+#endif
 
 // Atomic GL cull-face state bundles.
 //

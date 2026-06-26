@@ -82,7 +82,7 @@ void VertexBufferGLES32::CopyVertices(const Shape& src)
     // helper name makes the mistake glaring.  See
     // `engine/Poseidon/Graphics/Core/GLBufferMap.hpp`.
     void* mapped = _dynamic ? Poseidon::render::buf::MapDynamicWriteInvalidate(GL_ARRAY_BUFFER, 0, _vertexCount * sizeof(SVertex))
-                            : Poseidon::render::buf::MapStaticWriteOnce(GL_ARRAY_BUFFER);
+                            : Poseidon::render::buf::MapStaticWriteOnce(GL_ARRAY_BUFFER, _vertexCount * sizeof(SVertex));
     SVertex* sData = static_cast<SVertex*>(mapped);
     if (!sData)
     {
@@ -152,7 +152,7 @@ bool VertexBufferGLES32::Init(const Shape& src, VBType type)
         // legal map helper for it.  Using `MapDynamicWriteInvalidate`
         // here would re-introduce B-028; the helper API doesn't expose
         // that combination.
-        VertexIndex* iData = static_cast<VertexIndex*>(Poseidon::render::buf::MapStaticWriteOnce(GL_ELEMENT_ARRAY_BUFFER));
+        VertexIndex* iData = static_cast<VertexIndex*>(Poseidon::render::buf::MapStaticWriteOnce(GL_ELEMENT_ARRAY_BUFFER, indices * sizeof(VertexIndex)));
         if (!iData)
         {
             LOG_ERROR(Graphics, "GLES32: IBO map failed");

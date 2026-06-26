@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef __ANDROID__
+#include <glad/gles2.h>
+#else
 #include <glad/gl.h>
+#endif
 
 #ifndef NDEBUG
 #include <Poseidon/Dev/Debug/DebugTrap.hpp>

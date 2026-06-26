@@ -248,8 +248,16 @@ endif()
 target_include_directories(Poseidon PUBLIC
     ${CMAKE_SOURCE_DIR}/engine
     ${CMAKE_SOURCE_DIR}/thirdparty
-    ${CMAKE_SOURCE_DIR}/thirdparty/glad/include
 )
+if(ANDROID)
+    target_include_directories(Poseidon PUBLIC
+        ${CMAKE_SOURCE_DIR}/thirdparty/glad-es/include
+    )
+else()
+    target_include_directories(Poseidon PUBLIC
+        ${CMAKE_SOURCE_DIR}/thirdparty/glad/include
+    )
+endif()
 
 # ============================================================
 # Link Dependencies

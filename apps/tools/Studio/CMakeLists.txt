@@ -11,7 +11,11 @@ set(STUDIO_SOURCES
 if(WIN32)
     list(APPEND STUDIO_SOURCES ${CMAKE_SOURCE_DIR}/resources/icon-tool.rc)
 endif()
-add_executable(PoseidonStudio ${STUDIO_SOURCES})
+if(ANDROID)
+    add_library(PoseidonStudio SHARED ${STUDIO_SOURCES})
+else()
+    add_executable(PoseidonStudio ${STUDIO_SOURCES})
+endif()
 
 target_compile_definitions(PoseidonStudio PRIVATE
     IMGUI_ENABLE_FREETYPE
@@ -43,6 +47,9 @@ else()
         Poseidon PoseidonOpenAL
         -Wl,--end-group
     )
+    if(ANDROID)
+        target_link_libraries(PoseidonStudio PRIVATE PoseidonGLES32)
+    endif()
     if(NOT ANDROID)
         target_link_libraries(PoseidonStudio PRIVATE pthread)
     endif()

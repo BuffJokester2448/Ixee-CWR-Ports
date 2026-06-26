@@ -10,6 +10,8 @@ set(GAME_SOURCES
 if(WIN32)
     list(APPEND GAME_SOURCES resource.rc)
     add_executable(PoseidonGame WIN32 ${GAME_SOURCES})
+elseif(ANDROID)
+    add_library(PoseidonGame SHARED ${GAME_SOURCES})
 else()
     add_executable(PoseidonGame ${GAME_SOURCES})
 endif()
@@ -64,7 +66,9 @@ else()
         Poseidon
         PoseidonOpenAL
     )
-    if(NOT ANDROID)
+    if(ANDROID)
+        target_link_libraries(PoseidonGame PRIVATE PoseidonGLES32)
+    else()
         target_link_libraries(PoseidonGame PRIVATE PoseidonGL33)
     endif()
     target_link_libraries(PoseidonGame PRIVATE
