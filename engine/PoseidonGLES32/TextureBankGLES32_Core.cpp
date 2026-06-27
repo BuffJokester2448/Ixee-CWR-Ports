@@ -399,14 +399,11 @@ void TextBankGLES32::AddReleased(SurfaceInfoGLES32& surf)
 
 void TextBankGLES32::UseReleased(SurfaceInfoGLES32& surf, const TextureDescGLES32& desc, PacFormat format)
 {
-    int reuse = FindReleased(desc.w, desc.h, desc.nMipmaps, format);
-    if (reuse < 0)
-        return;
-
-    SurfaceInfoGLES32& reused = _freeTextures[reuse];
-    surf = reused;
-    reused.Free(false);
-    _freeTextures.Delete(reuse);
+    // reusing immutable textures via glTexSubImage2D
+    // causes Adreno drivers to hit "Too much alias space, unable to rename"
+    // and fallback to a slow path, tanking FPS. let the driver manage
+    // allocation/freeing of texture IDs.
+    return;
 }
 
 void TextBankGLES32::Reuse(SurfaceInfoGLES32& surf, const TextureDescGLES32& desc, PacFormat format)

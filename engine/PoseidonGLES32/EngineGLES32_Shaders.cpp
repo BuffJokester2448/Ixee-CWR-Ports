@@ -62,8 +62,8 @@ void main() {
     gl_Position.y = (1.0 - aPos.y * vpScale.y) * w;
     gl_Position.z = aPos.z * w;
     gl_Position.w = w;
-    vColor = aColor;
-    vSpecColor = aSpecular;
+    vColor = aColor.bgra;
+    vSpecColor = aSpecular.bgra;
     vUV0 = aUV0;
     vUV1 = aUV1;
     vFogTC = aSpecular.a;
