@@ -25,6 +25,7 @@ int PASCAL WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_filesystem.h>
 #include <cstdlib>
+#include <unistd.h>
 #endif
 
 int main(int argc, char* argv[])
@@ -34,6 +35,7 @@ int main(int argc, char* argv[])
     char* prefPath = SDL_GetPrefPath("cwr", "Poseidon");
     if (prefPath) {
         setenv("TMPDIR", prefPath, 1);
+        chdir(prefPath);
         SDL_free(prefPath);
     }
 #endif
