@@ -799,6 +799,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                     realPath = "/storage/" + type + "/" + (split.length > 1 ? split[1] : "");
                 }
             }
+            if (!realPath.isEmpty()) {
+                android.content.SharedPreferences prefs = getSharedPreferences("CWR_Prefs", android.content.Context.MODE_PRIVATE);
+                prefs.edit().putString("saved_asset_path", realPath).apply();
+            }
             onNativeFolderPicked(realPath);
         }
     }
@@ -810,6 +814,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             @Override
             public void run() {
                 try {
+                    android.content.SharedPreferences prefs = mSingleton.getSharedPreferences("CWR_Prefs", android.content.Context.MODE_PRIVATE);
+                    String savedPath = prefs.getString("saved_asset_path", "");
+
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                         if (!android.os.Environment.isExternalStorageManager()) {
                             Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
@@ -820,6 +827,14 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                             // Better to just show a toast.
                             android.widget.Toast.makeText(mSingleton, "Please grant 'All Files Access' and restart the game.", android.widget.Toast.LENGTH_LONG).show();
                             onNativeFolderPicked("");
+                            return;
+                        } else if (!savedPath.isEmpty() && new java.io.File(savedPath).exists()) {
+                            onNativeFolderPicked(savedPath);
+                            return;
+                        }
+                    } else {
+                        if (!savedPath.isEmpty() && new java.io.File(savedPath).exists()) {
+                            onNativeFolderPicked(savedPath);
                             return;
                         }
                     }
