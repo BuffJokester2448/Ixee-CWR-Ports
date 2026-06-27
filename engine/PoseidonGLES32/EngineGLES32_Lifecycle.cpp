@@ -545,6 +545,17 @@ bool EngineGLES32::ResetHard()
 
 bool EngineGLES32::SwitchRes(int w, int h, int bpp)
 {
+#ifdef __ANDROID__
+    if (!_windowed)
+    {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &bounds))
+        {
+            w = bounds.w;
+            h = bounds.h;
+        }
+    }
+#endif
     if (_pendingExclusiveEnter && _sdlWindow)
     {
         SDL_DisplayID display = SDL_GetDisplayForWindow(_sdlWindow);
@@ -900,11 +911,34 @@ void EngineGLES32::OnWindowResized(int w, int h)
     if (w <= 0 || h <= 0)
         return;
 
-    if (!_windowed && _windowMode == WindowMode::Fullscreen && _w > 0 && _h > 0)
+#ifndef __ANDROID__
+    // On desktop, when in a non-windowed mode we don't want spurious OS
+    // resize events overriding the mode we explicitly set.  Keep _w/_h.
+    if (!_windowed && _w > 0 && _h > 0)
     {
         w = _w;
         h = _h;
     }
+#else
+    // On Android the EGL surface is initially created at the safe-area
+    // height (e.g. 1080x2310).  When the window goes fullscreen the
+    // SurfaceView grows to the physical size (e.g. 1080x2400) and SDL
+    // fires SDL_EVENT_WINDOW_RESIZED.  We MUST accept that resize so
+    // that Reset() recreates the EGL surface at the correct dimensions;
+    // otherwise every submitted buffer is rejected by BLASTBufferQueue.
+    // Use SDL_GetDisplayBounds for the authoritative physical size.
+    if (!_windowed && _sdlWindow)
+    {
+        SDL_DisplayID display = SDL_GetDisplayForWindow(_sdlWindow);
+        if (!display) display = SDL_GetPrimaryDisplay();
+        SDL_Rect bounds{};
+        if (SDL_GetDisplayBounds(display, &bounds) && bounds.w > 0 && bounds.h > 0)
+        {
+            w = bounds.w;
+            h = bounds.h;
+        }
+    }
+#endif
 
     LOG_DEBUG(Graphics, "GLES32: OnWindowResized {}x{}", w, h);
     _w = w;

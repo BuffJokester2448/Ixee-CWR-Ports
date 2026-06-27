@@ -21,8 +21,6 @@ PoCriticalSection::PoCriticalSection(const char* srcFile, int lineNo, const char
     valid = true;
 #ifdef _WIN32
     InitializeCriticalSection(&cs);
-#else
-    mutex = mutexInit;
 #endif
     id = registerLock(srcFile, lineNo, descr);
     error = false;
@@ -42,8 +40,6 @@ PoCriticalSection::PoCriticalSection(bool val)
     {
 #ifdef _WIN32
         InitializeCriticalSection(&cs);
-#else
-        mutex = mutexInit;
 #endif
     }
     error = false;
@@ -57,8 +53,6 @@ PoCriticalSection::PoCriticalSection()
     valid = true;
 #ifdef _WIN32
     InitializeCriticalSection(&cs);
-#else
-    mutex = mutexInit;
 #endif
     error = false;
 #ifdef LOCK_TRACING
@@ -78,7 +72,12 @@ void PoCriticalSection::enter() const
     lockEnter(id);
 #endif
 #else
-    error = (pthread_mutex_lock(&mutex) != 0);
+    try {
+        mutex.lock();
+        error = false;
+    } catch (...) {
+        error = true;
+    }
 #endif
 }
 
@@ -97,7 +96,7 @@ bool PoCriticalSection::tryEnter() const
 #endif
 #else
     error = false;
-    return (pthread_mutex_trylock(&mutex) == 0);
+    return mutex.try_lock();
 #endif
 }
 
@@ -113,7 +112,12 @@ void PoCriticalSection::leave() const
 #endif
     LeaveCriticalSection(&cs);
 #else
-    error = (pthread_mutex_unlock(&mutex) != 0);
+    try {
+        mutex.unlock();
+        error = false;
+    } catch (...) {
+        error = true;
+    }
 #endif
 }
 
@@ -125,8 +129,6 @@ PoCriticalSection::~PoCriticalSection()
     }
 #ifdef _WIN32
     DeleteCriticalSection(&cs);
-#else
-    error = (pthread_mutex_destroy(&mutex) != 0);
 #endif
 }
 

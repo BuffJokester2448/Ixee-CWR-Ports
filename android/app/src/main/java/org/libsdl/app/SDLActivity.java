@@ -480,6 +480,31 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         setContentView(mLayout);
 
+        // Force fullscreen / edge-to-edge BEFORE the SurfaceView is laid out
+        // so that eglCreateWindowSurface() sees the full physical screen height
+        // (e.g. 1080x2400) rather than the safe-area height (e.g. 1080x2310).
+        // Without this, BLASTBufferQueue rejects every submitted frame because
+        // the EGL surface is baked at 2310 while the compositor expects 2400.
+        {
+            Window win = getWindow();
+            // Apply immersive fullscreen flags immediately
+            int flags = View.SYSTEM_UI_FLAG_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.INVISIBLE;
+            win.getDecorView().setSystemUiVisibility(flags);
+            win.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            win.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+            if (Build.VERSION.SDK_INT >= 30 /* Android 11 (R) */) {
+                win.getAttributes().layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+                win.setDecorFitsSystemWindows(false);
+            }
+            SDLActivity.mFullscreenModeActive = true;
+        }
+
         setWindowStyle(false);
 
         getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(this);

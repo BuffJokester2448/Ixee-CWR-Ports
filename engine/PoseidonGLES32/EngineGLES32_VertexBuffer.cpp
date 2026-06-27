@@ -408,8 +408,15 @@ void EngineGLES32::RenderTargetSize(int& w, int& h) const
     }
     w = _w;
     h = _h;
+#ifndef __ANDROID__
+    // On Android SDL_GetWindowSizeInPixels returns the safe-area size
+    // (e.g. 1080x2310 excluding status bar) which is smaller than the
+    // physical SurfaceView the compositor allocated (1080x2400). Using
+    // it here would cause BLASTBufferQueue to reject every submitted
+    // frame. Trust _w/_h which were set from SDL_GetDisplayBounds.
     if (_sdlWindow)
         SDL_GetWindowSizeInPixels(_sdlWindow, &w, &h);
+#endif
 }
 
 void EngineGLES32::DestroySSAATarget()

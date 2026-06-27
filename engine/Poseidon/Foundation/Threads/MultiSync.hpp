@@ -202,28 +202,28 @@ class Semaphore: public SignaledObject
 	}
 };
 
+#include <mutex>
+
 class CriticalSection
 {
 	private:
-	mutable pthread_mutex_t mutex;
+	mutable std::recursive_mutex mutex;
 
 	public:
-	CriticalSection ()
-	{
-	    mutex = mutexInit;
-	}
-	~CriticalSection ()
-	{
-	    pthread_mutex_destroy(&mutex);
-	}
+	CriticalSection () = default;
+	~CriticalSection () = default;
+
+	CriticalSection(const CriticalSection&) = delete;
+	CriticalSection& operator=(const CriticalSection&) = delete;
+
 	bool Lock () const
 	{
-	    pthread_mutex_lock(&mutex);
+	    mutex.lock();
 	    return true;
 	}
 	void Unlock () const
 	{
-	    pthread_mutex_unlock(&mutex);
+	    mutex.unlock();
 	}
 };
 

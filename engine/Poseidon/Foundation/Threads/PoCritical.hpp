@@ -27,6 +27,7 @@
 #else
 #include <pthread.h>
 #include <semaphore.h>
+#include <mutex>
 #endif
 
 namespace Poseidon::Foundation
@@ -44,7 +45,7 @@ class PoCriticalSection : public Poseidon::Foundation::RefCount
 
 #else
 
-    mutable pthread_mutex_t mutex;
+    mutable std::recursive_mutex mutex;
 
 #endif
 
@@ -65,6 +66,9 @@ class PoCriticalSection : public Poseidon::Foundation::RefCount
     PoCriticalSection(bool val);
 
     PoCriticalSection();
+
+    PoCriticalSection(const PoCriticalSection&) = delete;
+    PoCriticalSection& operator=(const PoCriticalSection&) = delete;
 
 #ifdef LOCK_TRACING
 

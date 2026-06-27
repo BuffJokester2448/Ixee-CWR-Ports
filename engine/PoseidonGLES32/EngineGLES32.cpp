@@ -325,20 +325,33 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     // --window forces Windowed regardless of saved displayMode (dev /
     // testing ergonomics).  appConfig already collapses --window into
     // displayMode = "windowed" during arg parsing, but be defensive.
+#ifdef __ANDROID__
+    displayCfg.displayMode = "borderless";
+#else
     if (windowed && displayCfg.displayMode != "windowed")
         displayCfg.displayMode = "windowed";
     if (!windowed && displayCfg.displayMode == "windowed")
         displayCfg.displayMode = "borderless";
+#endif
     displayCfg.width = _w;
     displayCfg.height = _h;
 
     int desktopW = 0, desktopH = 0, desktopRefresh = 0;
+#ifdef __ANDROID__
+    SDL_Rect bounds;
+    if (SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &bounds))
+    {
+        desktopW = bounds.w;
+        desktopH = bounds.h;
+    }
+#else
     if (const SDL_DisplayMode* dm = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay()))
     {
         desktopW = dm->w;
         desktopH = dm->h;
         desktopRefresh = (int)(dm->refresh_rate + 0.5f);
     }
+#endif
     const WindowPlacement placement = ResolveWindowPlacement(displayCfg, desktopW, desktopH, desktopRefresh);
     _windowMode = placement.mode;
 
@@ -392,12 +405,8 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
         SDL_SetWindowPosition(_sdlWindow, placement.posX, placement.posY);
     }
 
-#ifdef __ANDROID__
-    SDL_GetWindowSizeInPixels(_sdlWindow, &_w, &_h);
-#else
     _w = placement.width;
     _h = placement.height;
-#endif
     if (placement.refreshHz > 0)
         _refreshRate = placement.refreshHz;
 
@@ -453,11 +462,19 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
         }
     }
 
+#ifdef __ANDROID__
+    // Use the actual SurfaceView / window placement dimensions to avoid size mismatches with the compositor.
+    // SDL_GetWindowSizeInPixels returns the safe-area size (excluding system bars) on startup, which
+    // mismatches the full-screen SurfaceView / EGL backing surface dimensions.
+    _w = placement.width;
+    _h = placement.height;
+#else
     // Query actual pixel dimensions
     int cw = 0, ch = 0;
     SDL_GetWindowSizeInPixels(_sdlWindow, &cw, &ch);
     _w = cw;
     _h = ch;
+#endif
 
     // Vendor + renderer make hybrid-GPU support reports self-diagnosing — they
     // show which GPU Windows/Optimus actually handed the process.

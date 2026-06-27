@@ -60,8 +60,15 @@ namespace
 // we run alongside it.  HIGH-severity errors are always logged in
 // full — the frame layer's I-20 gate counts them and the message text is needed
 // for the violation report.
-std::unordered_map<GLuint, std::uint64_t> s_glDedupCounts;
-std::mutex s_glDedupMtx;
+static std::mutex& GetGLDedupMtx() {
+    static std::mutex* m = new std::mutex();
+    return *m;
+}
+
+static std::unordered_map<GLuint, std::uint64_t>& GetGLDedupCounts() {
+    static auto* c = new std::unordered_map<GLuint, std::uint64_t>();
+    return *c;
+}
 
 void GLAPIENTRY GlDebugCallback(GLenum /*source*/, GLenum type, GLuint id, GLenum severity, GLsizei /*length*/,
                                 const GLchar* message, const void* /*userParam*/)
@@ -93,8 +100,8 @@ void GLAPIENTRY GlDebugCallback(GLenum /*source*/, GLenum type, GLuint id, GLenu
     // summary line ("GL[MEDIUM id=N]: <msg> (suppressed K repeats)").
     bool firstSighting = false;
     {
-        std::lock_guard<std::mutex> lock(s_glDedupMtx);
-        auto& count = s_glDedupCounts[id];
+        std::lock_guard<std::mutex> lock(GetGLDedupMtx());
+        auto& count = GetGLDedupCounts()[id];
         firstSighting = (count == 0);
         ++count;
     }
@@ -318,12 +325,21 @@ EngineGL33::EngineGL33(int width, int height, bool windowed, int bpp)
     displayCfg.height = _h;
 
     int desktopW = 0, desktopH = 0, desktopRefresh = 0;
+#ifdef __ANDROID__
+    SDL_Rect bounds;
+    if (SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &bounds))
+    {
+        desktopW = bounds.w;
+        desktopH = bounds.h;
+    }
+#else
     if (const SDL_DisplayMode* dm = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay()))
     {
         desktopW = dm->w;
         desktopH = dm->h;
         desktopRefresh = (int)(dm->refresh_rate + 0.5f);
     }
+#endif
     const WindowPlacement placement = ResolveWindowPlacement(displayCfg, desktopW, desktopH, desktopRefresh);
     _windowMode = placement.mode;
 

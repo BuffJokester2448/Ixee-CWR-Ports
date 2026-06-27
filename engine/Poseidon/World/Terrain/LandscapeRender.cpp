@@ -43,7 +43,14 @@
 // (non-atomic) refcount — concurrent registration would race and corrupt the count,
 // surfacing later as a use-after-free / double-free at teardown. Serialize just the
 // texture registration; the expensive geometry generation stays parallel.
-static std::mutex GSegTextureRegMutex;
+// Heap-allocated so it is never destroyed at program exit: TaskPool threads
+// can still be running during static-storage destruction, which would cause
+// pthread_mutex_lock on an already-destroyed mutex (FORTIFY abort on Android).
+static std::mutex& GetSegTextureRegMutex()
+{
+    static std::mutex* m = new std::mutex();
+    return *m;
+}
 
 namespace Poseidon
 {
@@ -547,7 +554,7 @@ void Landscape::GenerateSegmentInto(LandSegment* seg, const LandBegEnd& rect, bo
 
                 if (texture)
                 {
-                    std::lock_guard<std::mutex> texLock(GSegTextureRegMutex);
+                    std::lock_guard<std::mutex> texLock(GetSegTextureRegMutex());
                     seg->_table.RegisterTexture(texture, _landGrid * _landGrid * 0.5f);
                 }
 
@@ -895,7 +902,7 @@ void Landscape::GenerateSegmentInto(LandSegment* seg, const LandBegEnd& rect, bo
             PoseidonAssert(seg->_wTable.NFaces() <= wFaces);
             if (seg->_wTable.NFaces() > 0)
             {
-                std::lock_guard<std::mutex> texLock(GSegTextureRegMutex);
+                std::lock_guard<std::mutex> texLock(GetSegTextureRegMutex());
                 seg->_wTable.RegisterTexture(_texture[0], _landGrid * _landGrid * 0.5f);
             }
             seg->_wTable.Compact();
@@ -1007,7 +1014,7 @@ void Landscape::GenerateSegmentInto(LandSegment* seg, const LandBegEnd& rect, bo
         PoseidonAssert(seg->_wTable.NFaces() <= wFaces);
         seg->_wTable.CalculateMinMax();
         {
-            std::lock_guard<std::mutex> texLock(GSegTextureRegMutex);
+            std::lock_guard<std::mutex> texLock(GetSegTextureRegMutex());
             seg->_wTable.RegisterTexture(_texture[0], _landGrid * _landGrid * 0.5f);
         }
         seg->_wTable.FindSections(true);

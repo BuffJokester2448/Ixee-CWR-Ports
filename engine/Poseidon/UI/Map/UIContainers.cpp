@@ -1475,13 +1475,17 @@ struct CursorDrawSnapshot
     bool hasValue = false;
 };
 
-std::mutex g_cursorDrawMutex;
+static std::mutex& GetCursorDrawMutex()
+{
+    static std::mutex* m = new std::mutex();
+    return *m;
+}
 CursorDrawSnapshot g_lastDraw;
 } // namespace
 
 void Record(ControlsContainer* owner, int x, int y, int w, int h)
 {
-    std::lock_guard<std::mutex> lock(g_cursorDrawMutex);
+    std::lock_guard<std::mutex> lock(GetCursorDrawMutex());
     g_lastDraw.idd = owner ? owner->IDD() : -1;
     g_lastDraw.x = x;
     g_lastDraw.y = y;
@@ -1492,7 +1496,7 @@ void Record(ControlsContainer* owner, int x, int y, int w, int h)
 
 bool Read(int& idd, int& x, int& y, int& w, int& h)
 {
-    std::lock_guard<std::mutex> lock(g_cursorDrawMutex);
+    std::lock_guard<std::mutex> lock(GetCursorDrawMutex());
     if (!g_lastDraw.hasValue)
         return false;
 

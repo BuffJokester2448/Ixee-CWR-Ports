@@ -1587,7 +1587,12 @@ void Init(SDL_Window* window, void* glContext)
         LOG_ERROR(Graphics, "DebugOverlay: ImGui_ImplSDL3_InitForOpenGL failed");
         return;
     }
-    if (!ImGui_ImplOpenGL3_Init("#version 330"))
+#ifdef __ANDROID__
+    const char* glsl_version = "#version 300 es";
+#else
+    const char* glsl_version = "#version 330";
+#endif
+    if (!ImGui_ImplOpenGL3_Init(glsl_version))
     {
         LOG_ERROR(Graphics, "DebugOverlay: ImGui_ImplOpenGL3_Init failed");
         return;

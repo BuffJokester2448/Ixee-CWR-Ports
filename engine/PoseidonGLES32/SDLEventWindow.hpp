@@ -152,8 +152,30 @@ class SDLEventWindow
             }
             else if (event.type == SDL_EVENT_WINDOW_RESIZED)
             {
+#ifdef __ANDROID__
+                // On Android, SDL_GetWindowSizeInPixels still returns the
+                // safe-area (status-bar-constrained) height until the EGL
+                // surface is fully recreated at the new size.  Read from the
+                // display bounds for the authoritative physical resolution.
+                if (_sdlWindow)
+                {
+                    SDL_DisplayID _evDisplay = SDL_GetDisplayForWindow(_sdlWindow);
+                    if (!_evDisplay) _evDisplay = SDL_GetPrimaryDisplay();
+                    SDL_Rect _evBounds{};
+                    if (SDL_GetDisplayBounds(_evDisplay, &_evBounds) && _evBounds.w > 0 && _evBounds.h > 0)
+                    {
+                        _width  = _evBounds.w;
+                        _height = _evBounds.h;
+                    }
+                    else
+                    {
+                        SDL_GetWindowSizeInPixels(_sdlWindow, &_width, &_height);
+                    }
+                }
+#else
                 if (_sdlWindow)
                     SDL_GetWindowSizeInPixels(_sdlWindow, &_width, &_height);
+#endif
                 _resized = true;
                 // Notify the engine so it can resize the swap chain with the
                 // correct final dimensions (critical for D3D11 FLIP_DISCARD).

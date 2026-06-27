@@ -229,8 +229,8 @@ static CRITICAL_SECTION& GetAllocatorCS()
 #include <mutex>
 static std::mutex& GetAllocatorMutex()
 {
-    static std::mutex m;
-    return m;
+    static std::mutex* m = new std::mutex();
+    return *m;
 }
 #define ALLOC_LOCK() GetAllocatorMutex().lock()
 #define ALLOC_UNLOCK() GetAllocatorMutex().unlock()

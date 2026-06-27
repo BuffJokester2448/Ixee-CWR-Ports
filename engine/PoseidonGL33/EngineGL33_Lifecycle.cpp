@@ -545,6 +545,17 @@ bool EngineGL33::ResetHard()
 
 bool EngineGL33::SwitchRes(int w, int h, int bpp)
 {
+#ifdef __ANDROID__
+    if (!_windowed)
+    {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &bounds))
+        {
+            w = bounds.w;
+            h = bounds.h;
+        }
+    }
+#endif
     if (_pendingExclusiveEnter && _sdlWindow)
     {
         SDL_DisplayID display = SDL_GetDisplayForWindow(_sdlWindow);
@@ -900,7 +911,7 @@ void EngineGL33::OnWindowResized(int w, int h)
     if (w <= 0 || h <= 0)
         return;
 
-    if (!_windowed && _windowMode == WindowMode::Fullscreen && _w > 0 && _h > 0)
+    if (!_windowed && _w > 0 && _h > 0)
     {
         w = _w;
         h = _h;
