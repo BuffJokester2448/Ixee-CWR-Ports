@@ -1637,12 +1637,20 @@ void ProcessEvent(const SDL_Event& event)
     }
 }
 
+} // namespace DebugOverlay
+} // namespace Poseidon::Dev
+
 #ifdef __ANDROID__
 extern float g_mobileLeftJoyStartX, g_mobileLeftJoyStartY, g_mobileLeftJoyCurrX, g_mobileLeftJoyCurrY;
 extern bool g_mobileLeftJoyActive;
 extern float g_mobileRightJoyStartX, g_mobileRightJoyStartY, g_mobileRightJoyCurrX, g_mobileRightJoyCurrY;
 extern bool g_mobileRightJoyActive;
+#endif
 
+namespace Poseidon::Dev {
+namespace DebugOverlay {
+
+#ifdef __ANDROID__
 static void DrawMobileControls() {
     if (GApp && !GApp->IsInGameplay()) return;
 
@@ -1652,19 +1660,19 @@ static void DrawMobileControls() {
     float h = io.DisplaySize.y;
 
     // Left Joystick
-    if (!g_mobileLeftJoyActive) {
+    if (!::g_mobileLeftJoyActive) {
         draw->AddCircleFilled(ImVec2(0.2f * w, 0.7f * h), 60.0f, IM_COL32(255, 255, 255, 40));
     } else {
-        draw->AddCircleFilled(ImVec2(g_mobileLeftJoyStartX * w, g_mobileLeftJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
-        draw->AddCircleFilled(ImVec2(g_mobileLeftJoyCurrX * w, g_mobileLeftJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
+        draw->AddCircleFilled(ImVec2(::g_mobileLeftJoyStartX * w, ::g_mobileLeftJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
+        draw->AddCircleFilled(ImVec2(::g_mobileLeftJoyCurrX * w, ::g_mobileLeftJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
     }
 
     // Right Joystick / Fire
-    if (!g_mobileRightJoyActive) {
+    if (!::g_mobileRightJoyActive) {
         draw->AddCircleFilled(ImVec2(0.8f * w, 0.7f * h), 60.0f, IM_COL32(255, 255, 255, 40));
     } else {
-        draw->AddCircleFilled(ImVec2(g_mobileRightJoyStartX * w, g_mobileRightJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
-        draw->AddCircleFilled(ImVec2(g_mobileRightJoyCurrX * w, g_mobileRightJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
+        draw->AddCircleFilled(ImVec2(::g_mobileRightJoyStartX * w, ::g_mobileRightJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
+        draw->AddCircleFilled(ImVec2(::g_mobileRightJoyCurrX * w, ::g_mobileRightJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
     }
 }
 #endif
