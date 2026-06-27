@@ -25,9 +25,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Drop SDL into the PoseidonGameDemo native library -->
+            <!-- Drop SDL into the PoseidonGame native library -->
             <meta-data android:name="android.app.lib_name"
-                       android:value="PoseidonGameDemo" />
+                       android:value="PoseidonGame" />
         </activity>
     </application>
 
