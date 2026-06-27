@@ -414,33 +414,33 @@ class SDLEventWindow
                 if (t) {
                     bool inGameplay = GApp && GApp->IsInGameplay();
                     
-                    if (inGameplay) {
-                        if (t->isLook && !t->isMoving && t->buttonId == -1) {
-                            // a tap on the right side maps to a left click.
-                            SDLInput_BufferMouseButton(0, true);
-                            SDLInput_BufferMouseButton(0, false);
-                        }
+                    if (inGameplay && t->isLook && !t->isMoving && t->buttonId == -1) {
+                        // a tap on the right side maps to a left click.
+                        SDLInput_BufferMouseButton(0, true);
+                        SDLInput_BufferMouseButton(0, false);
+                    }
 #ifdef __ANDROID__
-                        if (t->buttonId != -1) {
-                            g_mobileRenderState[t->buttonId].active = false;
-                            int type = g_mobileButtons[t->buttonId].type;
-                            if (type == VB_FIRE_LOOK) SDLInput_BufferMouseButton(0, false);
-                            else if (type == VB_ADS_LOOK) SDLInput_BufferMouseButton(1, false);
-                            else if (type == VB_ZOOM_LOOK) SDLInput_BufferKeyEvent(SDL_SCANCODE_KP_PLUS, false, Poseidon::Foundation::GlobalTickCount());
-                            else if (type == VB_KEY) SDLInput_BufferKeyEvent((SDL_Scancode)g_mobileButtons[t->buttonId].data, false, Poseidon::Foundation::GlobalTickCount());
-                            else if (type == VB_ACTION && !t->isMoving) {
-                                SDLInput_BufferKeyEvent(SDL_SCANCODE_RETURN, true, Poseidon::Foundation::GlobalTickCount());
-                                SDLInput_BufferKeyEvent(SDL_SCANCODE_RETURN, false, Poseidon::Foundation::GlobalTickCount());
-                            }
+                    if (t->buttonId != -1) {
+                        g_mobileRenderState[t->buttonId].active = false;
+                        int type = g_mobileButtons[t->buttonId].type;
+                        if (type == VB_FIRE_LOOK) SDLInput_BufferMouseButton(0, false);
+                        else if (type == VB_ADS_LOOK) SDLInput_BufferMouseButton(1, false);
+                        else if (type == VB_ZOOM_LOOK) SDLInput_BufferKeyEvent(SDL_SCANCODE_KP_PLUS, false, Poseidon::Foundation::GlobalTickCount());
+                        else if (type == VB_KEY) SDLInput_BufferKeyEvent((SDL_Scancode)g_mobileButtons[t->buttonId].data, false, Poseidon::Foundation::GlobalTickCount());
+                        else if (type == VB_ACTION && !t->isMoving) {
+                            SDLInput_BufferKeyEvent(SDL_SCANCODE_RETURN, true, Poseidon::Foundation::GlobalTickCount());
+                            SDLInput_BufferKeyEvent(SDL_SCANCODE_RETURN, false, Poseidon::Foundation::GlobalTickCount());
                         }
+                    }
 #endif
-                        if (t->isMove) {
-                            if (t->moveW) { SDLInput_BufferKeyEvent(SDL_SCANCODE_W, false, Poseidon::Foundation::GlobalTickCount()); t->moveW = false; }
-                            if (t->moveA) { SDLInput_BufferKeyEvent(SDL_SCANCODE_A, false, Poseidon::Foundation::GlobalTickCount()); t->moveA = false; }
-                            if (t->moveS) { SDLInput_BufferKeyEvent(SDL_SCANCODE_S, false, Poseidon::Foundation::GlobalTickCount()); t->moveS = false; }
-                            if (t->moveD) { SDLInput_BufferKeyEvent(SDL_SCANCODE_D, false, Poseidon::Foundation::GlobalTickCount()); t->moveD = false; }
-                        }
-                    } else if (t->buttonId == -1) {
+                    if (inGameplay && t->isMove) {
+                        if (t->moveW) { SDLInput_BufferKeyEvent(SDL_SCANCODE_W, false, Poseidon::Foundation::GlobalTickCount()); t->moveW = false; }
+                        if (t->moveA) { SDLInput_BufferKeyEvent(SDL_SCANCODE_A, false, Poseidon::Foundation::GlobalTickCount()); t->moveA = false; }
+                        if (t->moveS) { SDLInput_BufferKeyEvent(SDL_SCANCODE_S, false, Poseidon::Foundation::GlobalTickCount()); t->moveS = false; }
+                        if (t->moveD) { SDLInput_BufferKeyEvent(SDL_SCANCODE_D, false, Poseidon::Foundation::GlobalTickCount()); t->moveD = false; }
+                    }
+                    
+                    if (t->buttonId == -1 && !inGameplay) {
                         SDLInput_BufferMouseButton(0, false);
                     }
                     ReleaseTouch(t);

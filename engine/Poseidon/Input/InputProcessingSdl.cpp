@@ -63,7 +63,7 @@ VirtualButtonDef g_mobileButtons[] = {
     {"Time", 0.70f, 0.08f, 0.04f, VB_KEY, SDL_SCANCODE_O},
     {"Compass", 0.79f, 0.08f, 0.04f, VB_KEY, SDL_SCANCODE_K},
     {"Map", 0.88f, 0.08f, 0.04f, VB_KEY, SDL_SCANCODE_M},
-    {"Menu", 0.96f, 0.08f, 0.03f, VB_KEY, SDL_SCANCODE_ESCAPE},
+    {"ESC", 0.96f, 0.08f, 0.03f, VB_KEY, SDL_SCANCODE_ESCAPE},
     {"Bino", 0.82f, 0.20f, 0.04f, VB_KEY, SDL_SCANCODE_B},
     {"Firemode", 0.95f, 0.20f, 0.04f, VB_KEY, SDL_SCANCODE_F},
 };
