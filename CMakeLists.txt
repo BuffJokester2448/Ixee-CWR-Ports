@@ -52,7 +52,7 @@ else()
 
     # Equivalent of MSVC /Gy /Gw — per-function/per-data sections so the
     # linker (--gc-sections) can dead-strip unused symbols.
-    add_compile_options(-ffunction-sections -fdata-sections -fsigned-char)
+    add_compile_options(-ffunction-sections -fdata-sections -fsigned-char -fno-strict-aliasing)
 endif()
 
 # Make __FILE__ repo-root-relative so log/assert lines (Fail(), DoAssert(), LOG_*)
