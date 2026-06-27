@@ -63,8 +63,8 @@ TEST_CASE("FontSystem reports the slot-0 required font set", "[font][system]")
     // a row, this list must too — otherwise Initialize would happily
     // succeed against an incomplete set.
     const std::vector<std::string> expected = {
-        "fonts\\cwr_title.ttf", "fonts\\cwr_body.ttf", "fonts\\cwr_mono.ttf",
-        "fonts\\cwr_serif.ttf", "fonts\\cwr_hand.ttf",
+        "fonts/cwr_title.ttf", "fonts/cwr_body.ttf", "fonts/cwr_mono.ttf",
+        "fonts/cwr_serif.ttf", "fonts/cwr_hand.ttf",
     };
     for (const auto& path : expected)
     {
