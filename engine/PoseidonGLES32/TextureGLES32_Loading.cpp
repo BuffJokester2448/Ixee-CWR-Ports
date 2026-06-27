@@ -9,6 +9,13 @@
 #include <PoseidonGLES32/GLESCompat.hpp>
 
 #include <Poseidon/Graphics/Core/MipmapLayout.hpp>
+#include <vector>
+
+#ifdef __ANDROID__
+#define BCDEC_IMPLEMENTATION
+#include "../../../thirdparty/bcdec.h"
+#include "../../thirdparty/etcpak/ProcessRGB.hpp"
+#endif
 
 extern int MipmapSizeGLES32(PacFormat format, int w, int h);
 extern void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableDXT);
@@ -178,13 +185,71 @@ int TextureGLES32::UploadToGPU(SurfaceInfoGLES32& surface, int levelMin)
         }
 
         // Upload to GL
+        // Upload to GL
         TextureDescGLES32 fmtDesc;
-        InitGLESPixelFormat(fmtDesc, dstFmt, true);
+        InitGLESPixelFormat(fmtDesc, dstFmt, static_cast<EngineGLES32*>(GEngine)->CanDXT(1));
 
         if (fmtDesc.compressed)
         {
-            glCompressedTexSubImage2D(GL_TEXTURE_2D, aLevel, 0, 0, mip._w, mip._h, fmtDesc.internalFormat, dataSize,
-                                      pixelData.Data());
+#ifdef __ANDROID__
+            if (!static_cast<EngineGLES32*>(GEngine)->CanDXT(1) && 
+                mip._sFormat >= PacDXT1 && mip._sFormat <= PacDXT5)
+            {
+                // Decode DXT -> RGBA using bcdec, then RGBA -> ETC2 using etcpak
+                int blockW = (mip._w + 3) / 4;
+                int blockH = (mip._h + 3) / 4;
+                int blocks = blockW * blockH;
+                bool isAlpha = (mip._sFormat != PacDXT1);
+                
+                std::vector<uint32_t> rgbaBuf(mip._w * mip._h);
+                const uint8_t* src = static_cast<const uint8_t*>(pixelData.Data());
+                int blockSize = isAlpha ? 16 : 8;
+                
+                for (int by = 0; by < blockH; ++by)
+                {
+                    for (int bx = 0; bx < blockW; ++bx)
+                    {
+                        uint8_t rgba[64];
+                        if (mip._sFormat == PacDXT1)
+                            bcdec_bc1(src, rgba, 4 * 4);
+                        else if (mip._sFormat == PacDXT2 || mip._sFormat == PacDXT3)
+                            bcdec_bc2(src, rgba, 4 * 4);
+                        else
+                            bcdec_bc3(src, rgba, 4 * 4);
+                        
+                        src += blockSize;
+                        
+                        for (int py = 0; py < 4; ++py)
+                        {
+                            int y = by * 4 + py;
+                            if (y >= mip._h) continue;
+                            for (int px = 0; px < 4; ++px)
+                            {
+                                int x = bx * 4 + px;
+                                if (x >= mip._w) continue;
+                                
+                                const uint8_t* p = &rgba[(py * 4 + px) * 4];
+                                uint32_t c = (p[3] << 24) | (p[2] << 16) | (p[1] << 8) | p[0];
+                                rgbaBuf[y * mip._w + x] = c;
+                            }
+                        }
+                    }
+                }
+                
+                std::vector<uint64_t> etcBuf(blocks * (isAlpha ? 2 : 1));
+                if (isAlpha)
+                    CompressEtc2Rgba(rgbaBuf.data(), etcBuf.data(), blocks, mip._w, true);
+                else
+                    CompressEtc1Rgb(rgbaBuf.data(), etcBuf.data(), blocks, mip._w);
+                
+                glCompressedTexSubImage2D(GL_TEXTURE_2D, aLevel, 0, 0, mip._w, mip._h, fmtDesc.internalFormat, etcBuf.size() * sizeof(uint64_t), etcBuf.data());
+            }
+            else
+#endif
+            {
+                glCompressedTexSubImage2D(GL_TEXTURE_2D, aLevel, 0, 0, mip._w, mip._h, fmtDesc.internalFormat, dataSize,
+                                          pixelData.Data());
+            }
             GLenum err = glGetError();
             if (err != GL_NO_ERROR)
             {
@@ -204,6 +269,7 @@ int TextureGLES32::UploadToGPU(SurfaceInfoGLES32& surface, int levelMin)
             const void* uploadPtr = pixelData.Data();
             if (ConvertToRGBA(dstFmt, pixelData.Data(), rgbaBuf.data(), mip._w, mip._h))
                 uploadPtr = rgbaBuf.data();
+            
             glTexSubImage2D(GL_TEXTURE_2D, aLevel, 0, 0, mip._w, mip._h, fmtDesc.pixelFormat, fmtDesc.pixelType,
                             uploadPtr);
 #else

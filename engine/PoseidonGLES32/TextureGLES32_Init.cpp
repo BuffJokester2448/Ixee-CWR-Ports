@@ -63,16 +63,11 @@ static PacFormat DstFormat(PacFormat srcFormat, int dxt)
                 return PacARGB8888;
             return PacARGB4444;
         case PacDXT1:
-            if (static_cast<EngineGLES32*>(GEngine)->CanDXT(1))
-                return srcFormat;
-            return PacARGB1555;
         case PacDXT2:
         case PacDXT3:
         case PacDXT4:
         case PacDXT5:
-            if (static_cast<EngineGLES32*>(GEngine)->CanDXT(1))
-                return srcFormat;
-            return PacARGB8888;
+            return srcFormat;
         default:
             LOG_DEBUG(Graphics, "Unsupported source format {}", (int)srcFormat);
             return srcFormat;
@@ -85,18 +80,36 @@ void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableD
     switch (format)
     {
         case PacDXT1:
-            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
             desc.compressed = true;
+#ifdef __ANDROID__
+            if (!enableDXT) {
+                desc.internalFormat = GL_COMPRESSED_RGB8_ETC2;
+                return;
+            }
+#endif
+            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
             return;
         case PacDXT2:
         case PacDXT3:
-            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
             desc.compressed = true;
+#ifdef __ANDROID__
+            if (!enableDXT) {
+                desc.internalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC;
+                return;
+            }
+#endif
+            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
             return;
         case PacDXT4:
         case PacDXT5:
-            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
             desc.compressed = true;
+#ifdef __ANDROID__
+            if (!enableDXT) {
+                desc.internalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC;
+                return;
+            }
+#endif
+            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
             return;
         default:
             break;

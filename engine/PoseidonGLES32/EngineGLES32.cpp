@@ -452,6 +452,11 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
             glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
             glDebugMessageCallback(GlDebugCallback, nullptr);
             glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+#ifdef __ANDROID__
+            // silence extremely noisy Adreno performance warnings (Namespace collision, too much alias space)
+            glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_LOW, 0, nullptr, GL_FALSE);
+            glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE);
+#endif
             LOG_INFO(Graphics, "GLES32: KHR_debug callback wired (synchronous)");
         }
         else

@@ -264,8 +264,11 @@ endif()
 # ============================================================
 
 # Core dependencies (inherited by Client via PUBLIC link)
+add_subdirectory(${CMAKE_SOURCE_DIR}/thirdparty/etcpak ${CMAKE_BINARY_DIR}/etcpak)
+
 target_link_libraries(Poseidon PUBLIC
     spdlog::spdlog
+    etcpak
 )
 if(NOT WIN32)
     if(ANDROID)
