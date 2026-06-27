@@ -53,10 +53,8 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK to Google Drive
-        if: env.GDRIVE_CREDENTIALS != ''
+        if: ${{ secrets.GDRIVE_CREDENTIALS != '' }}
         uses: adityak74/google-drive-upload-action@main
-        env:
-          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
         with:
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
           filename: android/app/build/outputs/apk/debug/app-debug.apk
