@@ -39,12 +39,9 @@ jobs:
           vcpkgDirectory: ${{ github.workspace }}/vcpkg
           vcpkgJsonGlob: '**/vcpkg.json'
 
-      - name: Make gradlew executable
-        run: chmod +x android/gradlew
-
       - name: Build APK (Debug)
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug
 
       - name: Release APK
         uses: softprops/action-gh-release@v2
