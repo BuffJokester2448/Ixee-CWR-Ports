@@ -65,7 +65,7 @@ void FontSystem::Initialize()
         for (const auto& path : missing)
             LOG_ERROR(Graphics, "FontSystem: required font missing: {}", path);
         LOG_ERROR(Graphics, "FontSystem::Initialize aborting — {} font(s) absent", missing.size());
-        std::exit(1);
+        std::abort();
     }
 
     _initialized = true;
