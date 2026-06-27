@@ -198,11 +198,11 @@ int TextureGLES32::UploadToGPU(SurfaceInfoGLES32& surface, int levelMin)
                 int blockW = (mip._w + 3) / 4;
                 int blockH = (mip._h + 3) / 4;
                 int blocks = blockW * blockH;
-                bool isAlpha = (mip._sFormat != PacDXT1);
+                bool isAlpha = (fmtDesc.internalFormat == GL_COMPRESSED_RGBA8_ETC2_EAC);
                 
                 std::vector<uint32_t> rgbaBuf(mip._w * mip._h);
                 const uint8_t* src = reinterpret_cast<const uint8_t*>(pixelData.Data());
-                int blockSize = isAlpha ? 16 : 8;
+                int blockSize = (mip._sFormat == PacDXT1) ? 8 : 16;
                 
                 for (int by = 0; by < blockH; ++by)
                 {
@@ -228,7 +228,10 @@ int TextureGLES32::UploadToGPU(SurfaceInfoGLES32& surface, int levelMin)
                                 if (x >= mip._w) continue;
                                 
                                 const uint8_t* p = &rgba[(py * 4 + px) * 4];
-                                uint32_t c = (p[3] << 24) | (p[2] << 16) | (p[1] << 8) | p[0];
+                                // bcdec outputs RGBA (p[0]=R,p[1]=G,p[2]=B,p[3]=A).
+                                // etcpak reads uint32 bytes as B=0,G=1,R=2,A=3,
+                                // so swap R and B when packing.
+                                uint32_t c = (p[3] << 24) | (p[0] << 16) | (p[1] << 8) | p[2];
                                 rgbaBuf[y * mip._w + x] = c;
                             }
                         }
@@ -310,7 +313,7 @@ int TextureGLES32::LoadLevels(int levelMin)
         _inUse++;
 
         TextureDescGLES32 desc;
-        InitDesc(desc, levelMin, true);
+        InitDesc(desc, levelMin, static_cast<EngineGLES32*>(GEngine)->CanDXT(1));
 
         PacFormat format = _mipmaps[levelMin].DstFormat();
         bank->UseReleased(_surface, desc, format);

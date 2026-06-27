@@ -83,7 +83,7 @@ void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableD
             desc.compressed = true;
 #ifdef __ANDROID__
             if (!enableDXT) {
-                desc.internalFormat = GL_COMPRESSED_RGB8_ETC2;
+                desc.internalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC;
                 return;
             }
 #endif
