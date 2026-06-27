@@ -5,6 +5,9 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/base_sink.h>
+#ifdef __ANDROID__
+#include <spdlog/sinks/android_sink.h>
+#endif
 #include <spdlog/pattern_formatter.h>
 #include <atomic>
 #include <cstring>
@@ -538,6 +541,15 @@ void LoggingSystem::Initialize(const char* logLevel, const char* categoryFilter,
     {
         if (!suppressTestConsole)
         {
+#ifdef __ANDROID__
+            // Android mode: log to logcat using m_appTagRaw or default to "poseidon"
+            auto android_sink = std::make_shared<spdlog::sinks::android_sink_mt>(m_appTagRaw[0] ? m_appTagRaw : "poseidon");
+            auto formatter = std::make_unique<spdlog::pattern_formatter>();
+            formatter->add_flag<PoseidonFormatter>('*', this);
+            formatter->set_pattern("%*%v");
+            android_sink->set_formatter(std::move(formatter));
+            sinks.push_back(android_sink);
+#else
             // Text mode: colored console with custom formatter
             auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
             auto formatter = std::make_unique<spdlog::pattern_formatter>();
@@ -545,6 +557,7 @@ void LoggingSystem::Initialize(const char* logLevel, const char* categoryFilter,
             formatter->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %*%v");
             console_sink->set_formatter(std::move(formatter));
             sinks.push_back(console_sink);
+#endif
         }
     }
 
