@@ -35,7 +35,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: '2bcb16b1e2a0ad3a9483dc47120dbdf9cbce1417' # Usually good to pin, but this action handles caching well
+          vcpkgGitCommitId: 'c8f45a069ad0266bc70e703c1252cb51506ddcaf' # Usually good to pin, but this action handles caching well
           vcpkgDirectory: ${{ github.workspace }}/vcpkg
           vcpkgJsonGlob: '**/vcpkg.json'
 
