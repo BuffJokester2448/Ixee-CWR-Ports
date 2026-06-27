@@ -1,0 +1,65 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "port/android-arm64", "main" ]
+  pull_request:
+    branches: [ "port/android-arm64", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '2bcb16b1e2a0ad3a9483dc47120dbdf9cbce1417' # Usually good to pin, but this action handles caching well
+          vcpkgDirectory: ${{ github.workspace }}/vcpkg
+          vcpkgJsonGlob: '**/vcpkg.json'
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build APK (Debug)
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: poseidon-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK to Google Drive
+        if: env.GDRIVE_CREDENTIALS != ''
+        uses: adityak74/google-drive-upload-action@main
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+        with:
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+          filename: android/app/build/outputs/apk/debug/app-debug.apk
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          name: poseidon-debug-${{ github.sha }}.apk
+          overwrite: "true"
