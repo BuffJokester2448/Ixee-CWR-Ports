@@ -1,5 +1,7 @@
-// gles32 bind cache implementation. mirrors the gl33 version exactly,
-// just lives in the gles32bind namespace.
+// gles32 bind cache implementation.
+//
+// this follows the gl33 cache behavior, but stays in the gles32 namespace so
+// the two backends can share one link unit safely.
 
 #include <PoseidonGLES32/GLES32BindCache.hpp>
 #include <PoseidonGLES32/GLESCompat.hpp>
@@ -49,9 +51,9 @@ void Tex2D(int unit, unsigned int tex)
     if (unit >= 0 && unit < kUnits && g_tex[unit] == tex)
     {
         ActiveUnit(unit);
-        // b 007 tripwire. sample 1 of every 64 skips per unit to verify
-        // the cache actually matches what gl has bound. a divergence is
-        // persistent so sampling still catches it quickly.
+        // b 007 tripwire: sample one skip in 64 per unit to confirm the cache
+        // still matches driver state. any divergence is persistent, so sparse
+        // sampling catches it quickly.
         if ((g_texSkipCtr[unit]++ & 63u) == 0)
         {
             GLint live = 0;

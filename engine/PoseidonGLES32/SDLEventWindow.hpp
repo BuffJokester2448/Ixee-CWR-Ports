@@ -6,7 +6,7 @@
 #include <SDL3/SDL.h>
 #include <Poseidon/Dev/Debug/DebugOverlay.hpp>
 
-// SDL input buffer functions (InputProcessing_sdl.cpp)
+// SDL input buffer functions from InputProcessing_sdl.cpp.
 extern void SDLInput_BufferKeyEvent(SDL_Scancode sc, bool down, DWORD timestamp);
 extern void SDLInput_BufferMouseButton(int btn, bool down);
 extern void SDLInput_BufferMouseMotion(float dx, float dy);
@@ -18,9 +18,9 @@ extern void SDLInput_BufferUICharEvent(const char* text);
 #include <Poseidon/Foundation/Framework/AppFrame.hpp>
 extern void SetSkipKeys(bool skip);
 
-// SDL event-pump helper used by EngineGLES32.  Does NOT own the SDL_Window —
-// the renderer manages its lifecycle.  Handles SDL event polling, focus
-// tracking, and input forwarding.
+// SDL event-pump helper used by EngineGLES32.
+// it does not own the SDL_Window; the renderer manages the window lifecycle.
+// handles event polling, focus tracking, and input forwarding.
 class SDLEventWindow
 {
     SDL_Window* _sdlWindow = nullptr;
@@ -29,7 +29,7 @@ class SDLEventWindow
     bool _focused = true, _focusGained = false, _focusLost = false;
     bool _mouseGrab = true;
     bool _altEnterConsumed = false;
-    bool _fullscreenTransitioning = false; // blocks phantom Alt+Enter during transition
+    bool _fullscreenTransitioning = false; // blocks phantom Alt+Enter during transitions.
 
     struct TouchState {
         SDL_FingerID id = -1;
@@ -70,8 +70,8 @@ class SDLEventWindow
     }
 
   public:
-    // Attach to an existing SDL window (does not take ownership).
-    // Sets GApp->m_appActive and acquires mouse.
+    // attach to an existing SDL window without taking ownership.
+    // marks the app active and acquires the mouse.
     void Attach(SDL_Window* window, int w, int h)
     {
         _sdlWindow = window;
@@ -98,12 +98,12 @@ class SDLEventWindow
         _open = false;
     }
 
-    // Init unused — the renderer creates the window.
+    // init is unused because the renderer creates the window.
     bool Init(int, int, bool) { return false; }
 
     int GetWidth() const { return _width; }
     int GetHeight() const { return _height; }
-    void SwapBuffers() {} // renderer handles Present
+    void SwapBuffers() {} // the renderer handles present.
 
     void HandleEvents()
     {
@@ -111,21 +111,21 @@ class SDLEventWindow
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            // ImGui needs every event so it can update its input state.
-            // Forwarding is harmless when the overlay is hidden.
+            // imgui needs every event so it can update its input state.
+            // forwarding is harmless when the overlay is hidden.
             Poseidon::Dev::DebugOverlay::ProcessEvent(event);
 
-            // When the ImGui panel is focused over a slider / text input,
-            // swallow the matching SDL events so they don't ALSO move the
-            // player / fire the menu cursor / etc.  Always allow window
-            // lifecycle events through.  Always allow F8 so the user can
-            // dismiss the panel without it eating its own un-toggle.
+            // when the imgui panel is focused over a slider or text input,
+            // swallow the matching SDL events so they do not also move the
+            // player or fire the menu cursor.
+            // always allow window lifecycle events through, and always allow F8
+            // so the panel can dismiss itself.
             const bool isKeyPress = event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP;
             const bool isKey = isKeyPress || event.type == SDL_EVENT_TEXT_INPUT;
             const bool isMouse = event.type == SDL_EVENT_MOUSE_MOTION || event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
                                  event.type == SDL_EVENT_MOUSE_BUTTON_UP || event.type == SDL_EVENT_MOUSE_WHEEL;
-            // Read event.key only for real key events; on a TEXT_INPUT event the active
-            // union member is event.text, so event.key.scancode is garbage (UB).
+            // read event.key only for real key events; on TEXT_INPUT the active
+            // union member is event.text, so event.key.scancode is undefined.
             const bool isF8 = isKeyPress && event.key.scancode == SDL_SCANCODE_F8;
             if (!isF8 && ((isKey && Poseidon::Dev::DebugOverlay::WantsKeyboard()) ||
                           (isMouse && Poseidon::Dev::DebugOverlay::WantsMouse())))
@@ -135,12 +135,12 @@ class SDLEventWindow
 
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
             {
-                // Alt+F4 is a legitimate in-game combo (Alt = freelook, F4 = "select
-                // unit 4").  On Windows the OS turns Alt+F4 into a window-close request;
-                // ignore it only during active gameplay so the F4 keypress reaches the
-                // game.  Everywhere else (menus, briefing, the Esc dialog) Alt+F4 is the
-                // standard desktop quit and must close — as do the title-bar X / taskbar
-                // / menu Quit, which carry no Alt.
+                // Alt+F4 is a legitimate in-game combo, with Alt used for freelook
+                // and F4 used to select unit 4.
+                // on Windows the OS turns Alt+F4 into a window-close request; ignore
+                // it only during active gameplay so the F4 keypress reaches the game.
+                // everywhere else Alt+F4 is the standard desktop quit and must close,
+                // as do the title-bar X, taskbar, and menu Quit actions.
                 const bool altDown = (SDL_GetModState() & SDL_KMOD_ALT) != 0;
                 if (!::Poseidon::ShouldHonorWindowClose(altDown, GApp->IsInGameplay()))
                 {
@@ -153,10 +153,9 @@ class SDLEventWindow
             else if (event.type == SDL_EVENT_WINDOW_RESIZED)
             {
 #ifdef __ANDROID__
-                // On Android, SDL_GetWindowSizeInPixels still returns the
-                // safe-area (status-bar-constrained) height until the EGL
-                // surface is fully recreated at the new size.  Read from the
-                // display bounds for the authoritative physical resolution.
+                // on android, SDL_GetWindowSizeInPixels can still report the
+                // safe-area height until the EGL surface is fully recreated.
+                // read the display bounds for the authoritative physical resolution.
                 if (_sdlWindow)
                 {
                     SDL_DisplayID _evDisplay = SDL_GetDisplayForWindow(_sdlWindow);
@@ -177,8 +176,8 @@ class SDLEventWindow
                     SDL_GetWindowSizeInPixels(_sdlWindow, &_width, &_height);
 #endif
                 _resized = true;
-                // Notify the engine so it can resize the swap chain with the
-                // correct final dimensions (critical for D3D11 FLIP_DISCARD).
+                // notify the engine so it can resize the swap chain with the final
+                // dimensions.
                 if (::Poseidon::GEngine)
                     ::Poseidon::GEngine->OnWindowResized(_width, _height);
             }
@@ -249,18 +248,13 @@ class SDLEventWindow
                         _fullscreenTransitioning = true;
                         ::Poseidon::GEngine->SetWindowMode(windowed ? ::Poseidon::WindowMode::Borderless
                                                                     : ::Poseidon::WindowMode::Windowed);
-                        // The Borderless and Windowed paths in SetWindowMode are
-                        // synchronous (they don't go through SDL's fullscreen state
-                        // machine — see the SDL #12791 comment in
-                        // EngineGLES32_Lifecycle.cpp) so the
-                        // ENTER_FULLSCREEN / LEAVE_FULLSCREEN handlers further
-                        // down won't fire to clear this flag.  Drop it here
-                        // immediately for those two modes so the next Alt+Enter
-                        // isn't swallowed as "transition in progress".  The
-                        // exclusive-fullscreen path still goes through SDL's
-                        // state machine and will clear the flag from its
-                        // ENTER_FULLSCREEN handler when SDL completes the
-                        // mode switch.
+                        // the borderless and windowed paths in SetWindowMode are
+                        // synchronous, so they do not go through SDL's fullscreen
+                        // state machine.
+                        // clear the flag here for those modes so the next Alt+Enter
+                        // is not swallowed as a transition in progress.
+                        // exclusive fullscreen still goes through SDL's state machine
+                        // and clears the flag from its ENTER_FULLSCREEN handler.
                         _fullscreenTransitioning = false;
                     }
                     _altEnterConsumed = true;
@@ -329,7 +323,7 @@ class SDLEventWindow
                 TouchState* t = GetTouch(event.tfinger.fingerID);
                 if (t) {
                     if (t->isLook && !t->isMoving) {
-                        // It was a tap on the right side! Send left click.
+                        // a tap on the right side maps to a left click.
                         SDLInput_BufferMouseButton(1, true);
                         SDLInput_BufferMouseButton(1, false);
                     }
@@ -348,12 +342,12 @@ class SDLEventWindow
                     float distX = event.tfinger.x - t->startX;
                     float distY = event.tfinger.y - t->startY;
                     float distSq = distX * distX + distY * distY;
-                    if (distSq > 0.0004f) { // roughly 0.02f squared
+                    if (distSq > 0.0004f) { // roughly 0.02f squared.
                         t->isMoving = true;
                     }
                     
                     if (t->isLook) {
-                        float speedX = _width * 1.5f; // sensitivity multiplier
+                        float speedX = _width * 1.5f; // sensitivity multiplier.
                         float speedY = _height * 1.5f;
                         SDLInput_BufferMouseMotion(dx * speedX, dy * speedY);
                     } else if (t->isMove && t->isMoving) {

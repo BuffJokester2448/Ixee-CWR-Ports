@@ -11,10 +11,10 @@ static inline float PlaneDistance2(const Plane& p1, const Plane& p2)
 }
 
 
-// Cheap order-sensitive signature of a draw's light list (count + element
-// pointers). Lights are static within a frame and the material cache is reset
-// at pass boundaries, so identity by pointer is sufficient to tell whether two
-// draws were handed the same set of local lights.
+// order-sensitive signature of a draw's light list.
+// lights are static within a frame and the material cache resets at pass
+// boundaries, so pointer identity is sufficient to tell whether two draws saw
+// the same local lights.
 static uint64_t LightsSignature(const LightList& lights)
 {
     uint64_t sig = static_cast<uint64_t>(lights.Size());
@@ -24,11 +24,12 @@ static uint64_t LightsSignature(const LightList& lights)
 }
 
 #ifndef NDEBUG
-// Signature of the frame-constant lighting inputs DoSetMaterial folds into its
-// upload (MainLight NightEffect, sun diffuse/ambient, sun-enable) but
-// deliberately leaves OUT of the per-draw cache key — they are constant within a
-// frame and the cache is invalidated each frame (InitDraw), so they cannot go
-// stale. The debug tripwire in SetMaterial asserts that invariant holds.
+// signature of the frame-constant lighting inputs DoSetMaterial folds into its
+// upload.
+// MainLight NightEffect, sun diffuse and ambient, and sun-enable stay out of
+// the per-draw cache key because they are constant within a frame and the cache
+// is invalidated every frame.
+// the debug tripwire in SetMaterial asserts that invariant holds.
 static uint64_t MaterialFrameInputsSig(const render::LegacySpec& spec, bool sunEnabled)
 {
     LightSun* sun = GScene->MainLight();
@@ -49,14 +50,13 @@ static uint64_t MaterialFrameInputsSig(const render::LegacySpec& spec, bool sunE
 }
 #endif
 
-// Set material and lights for rendering — low-level path that updates
-// pixel-shader specular selection and uploads material constants.
+// low-level material and light path.
+// updates pixel-shader specular selection and uploads material constants.
 void EngineGLES32::DoSetMaterial(const TLMaterial& mat, const LightList& lights, const Poseidon::render::LegacySpec& spec)
 {
     _materialSet = mat;
-    // Cache key narrows to the only material bit SetMaterial actually
-    // compares against: DisableSun.  Other bits in `spec.material` are
-    // not part of the material-state contract here.
+    // the cache key only tracks the material bit SetMaterial actually compares
+    // against: DisableSun.
     _materialSetSpec = static_cast<int>(static_cast<std::uint32_t>(spec.material & Poseidon::render::Material::DisableSun));
     _materialSetLightsSig = LightsSignature(lights);
 #ifndef NDEBUG
@@ -67,8 +67,8 @@ void EngineGLES32::DoSetMaterial(const TLMaterial& mat, const LightList& lights,
 
     UploadVSMaterialConstants(mat, _sunEnabled);
 
-    // Local lights illuminate geometry only at night; DisableSun materials
-    // (which the legacy SetupLights forced to full night) always receive them.
+    // local lights illuminate geometry only at night; DisableSun materials,
+    // which the legacy SetupLights forced to full night, always receive them.
     float night = GScene->MainLight()->NightEffect();
     if (static_cast<std::uint32_t>(spec.material & render::Material::DisableSun) != 0)
         night = 1.0f;
@@ -80,7 +80,7 @@ void EngineGLES32::DoSetMaterial(const TLMaterial& mat, const LightList& lights,
         SelectPixelShaderSpecular(PSSNormal);
 }
 
-// Set material and lights with caching — high-level path used by callers,
+// high-level material and light path with caching.
 // avoids redundant DoSetMaterial calls when the active state already matches.
 void EngineGLES32::SetMaterial(const TLMaterial& mat, const LightList& lights, const Poseidon::render::LegacySpec& spec)
 {
@@ -88,11 +88,10 @@ void EngineGLES32::SetMaterial(const TLMaterial& mat, const LightList& lights, c
     if (mat == _materialSet && _materialSetSpec == narrowedKey && LightsSignature(lights) == _materialSetLightsSig)
     {
 #ifndef NDEBUG
-        // The cache key matched, so re-uploading is skipped. Assert that the
-        // frame-constant lighting inputs the upload also reads (but the key
-        // omits) are likewise unchanged — i.e. the cache has not outlived its
-        // frame. If this fires, a frame-constant input is going stale and either
-        // belongs in the key or the per-frame cache reset has regressed.
+        // the cache key matched, so reuploading is skipped.
+        // assert that the frame-constant lighting inputs read by the upload but
+        // omitted from the key are still unchanged, which means the cache has
+        // not outlived its frame.
         PoseidonAssert(MaterialFrameInputsSig(spec, _sunEnabled) == _materialFrameInputsSig);
 #endif
         return;

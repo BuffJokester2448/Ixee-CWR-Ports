@@ -12,11 +12,12 @@
 #include <cstdint>
 #include <vector>
 
-// Self-contained offscreen depth render used to validate the GL shadow-depth
-// path against the CPU oracle. Renders
-// triangle geometry from the light into a depth FBO and reads the depth back.
-// Off the live render path entirely — only invoked by the triShadowDepthProbe
-// test verb, so it cannot affect normal rendering.
+// self-contained offscreen depth render used to validate the gl shadow-depth
+// path against the cpu oracle.
+// renders triangle geometry from the light into a depth fbo and reads the
+// depth back.
+// it is only invoked by the triShadowDepthProbe test verb, so it cannot affect
+// normal rendering.
 
 namespace
 {
@@ -28,15 +29,16 @@ int s_res = 0;
 GLuint s_vao = 0;
 GLuint s_vbo = 0;
 
-// Cascade depth-map array (the live lit path; the single-layer s_fbo/s_tex above
-// stays for the ShadowDepthProbe CPU-oracle cross-check test).
+// cascade depth-map array for the live lit path.
+// the single-layer s_fbo and s_tex above stay for the ShadowDepthProbe cpu
+// oracle cross-check test.
 GLuint s_arrFbo = 0;
 GLuint s_arrTex = 0;
 int s_arrRes = 0;
 int s_arrLayers = 0;
 
-// Alpha-tested caster pass: a second depth program + mesh that samples the
-// caster texture alpha and discards, so cutout foliage casts a leaf silhouette.
+// alpha-tested caster pass: a second depth program and mesh that samples the
+// caster texture alpha and discards so cutout foliage casts a leaf silhouette.
 GLuint s_alphaProg = 0;
 GLint s_alphaLocVP = -1;
 GLint s_alphaLocTex = -1;
@@ -128,7 +130,7 @@ bool EnsureTarget(int res)
 
     glGenTextures(1, &s_tex);
     glBindTexture(GL_TEXTURE_2D, s_tex);
-    GLES32Bind::Invalidate(); // raw init-path bind on an unknown unit
+    GLES32Bind::Invalidate(); // raw init-path bind on an unknown unit.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, res, res, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -138,8 +140,8 @@ bool EnsureTarget(int res)
     glGenFramebuffers(1, &s_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, s_tex, 0);
-    // GLES does not have glDrawBuffer, depth-only FBOs are valid without it
-    // GLES does not have glReadBuffer for depth-only FBOs
+    // GLES does not have glDrawBuffer, and depth-only FBOs are valid without it.
+    // GLES does not have glReadBuffer for depth-only FBOs.
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (status != GL_FRAMEBUFFER_COMPLETE)
@@ -272,10 +274,11 @@ bool EnsureAlphaMesh()
 
 namespace
 {
-// Render `vertCount` world-space triangle vertices from the light into the depth
-// FBO; optionally read the depth back. Depth state goes through the Core bundles
-// so the GL-state audits stay green; ApplyPipeline re-owns depth/cull on the next
-// draw, so only bindings (FBO / program / VAO / buffer / viewport) are restored.
+// render vertCount world-space triangle vertices from the light into the depth
+// fbo and optionally read the depth back.
+// depth state goes through the core bundles so the gl-state audits stay green;
+// ApplyPipeline re-owns depth and cull on the next draw, so only bindings are
+// restored.
 bool RenderDepthFBO(void* glContext, const float* lightVP16, const float* triXYZ, int vertCount, int res,
                     float* outDepthOrNull)
 {
@@ -293,8 +296,8 @@ bool RenderDepthFBO(void* glContext, const float* lightVP16, const float* triXYZ
     glGetIntegerv(GL_VIEWPORT, prevVP);
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
     glViewport(0, 0, res, res);
-    Poseidon::render::depthstencil::Normal(/*hasStencil*/ false); // test on, LEQUAL, write on
-    Poseidon::render::cull::None();                               // single-map probe: capture both faces
+    Poseidon::render::depthstencil::Normal(/*hasStencil*/ false); // test on, lequal, write on.
+    Poseidon::render::cull::None();                               // single-map probe: capture both faces.
     glClearDepth(1.0);
     Poseidon::render::clear::WithMask(GL_DEPTH_BUFFER_BIT);
 
@@ -306,8 +309,9 @@ bool RenderDepthFBO(void* glContext, const float* lightVP16, const float* triXYZ
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertCount) * 3 * sizeof(float), triXYZ, GL_DYNAMIC_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, vertCount);
 
-    // GL_DEPTH_COMPONENT float == window-space depth in [0,1]; with ZERO_TO_ONE
-    // clip control window z == NDC z, matching the CPU oracle. Origin bottom-left.
+    // GL_DEPTH_COMPONENT float matches window-space depth in [0,1]; with
+    // ZERO_TO_ONE clip control, window z matches ndc z and the cpu oracle.
+    // origin is bottom-left.
     if (outDepthOrNull)
         glReadPixels(0, 0, res, res, GL_DEPTH_COMPONENT, GL_FLOAT, outDepthOrNull);
 
@@ -319,11 +323,12 @@ bool RenderDepthFBO(void* glContext, const float* lightVP16, const float* triXYZ
     return true;
 }
 
-// Render the casters into each cascade layer of the depth array, once per cascade
-// with that cascade's light-VP: solid triangles with the depth-only program, then
-// the alpha-cutout batches with the texture-alpha-discard program (one bind per
-// caster texture). Depth/clear go through the Core bundles so the GL-state audits
-// stay green; ApplyPipeline re-owns depth/cull/texture on the next draw.
+// render the casters into each cascade layer of the depth array once per
+// cascade with that cascade's light-vp.
+// solid triangles use the depth-only program, then alpha-cutout batches use the
+// texture-alpha-discard program.
+// depth and clear go through the core bundles so the gl-state audits stay green;
+// ApplyPipeline re-owns depth, cull, and texture on the next draw.
 bool RenderCascadeArray(void* glContext, const float* lightVPs, int numCascades, int res, const float* solidXYZ,
                         int solidVertCount, const float* alphaXYZUV, int alphaVertCount,
                         const ResolvedAlphaBatch* batches, int batchCount)
@@ -350,7 +355,7 @@ bool RenderCascadeArray(void* glContext, const float* lightVPs, int numCascades,
     Poseidon::render::depthstencil::Normal(/*hasStencil*/ false);
     Poseidon::render::cull::None();
 
-    // Upload the (cascade-invariant) geometry once; only the light-VP changes per layer.
+    // upload the cascade-invariant geometry once; only the light-vp changes per layer.
     if (haveSolid)
     {
         GLES32Bind::Vao(s_vao);
@@ -374,11 +379,10 @@ bool RenderCascadeArray(void* glContext, const float* lightVPs, int numCascades,
 
         if (haveSolid)
         {
-            // Store the BACK faces (cull front): a lit front-facing surface is then
-            // strictly nearer the light than the stored depth, so it cannot
-            // self-shadow — kills the soldier's self-shadow acne/animation flicker
-            // and lets the bias stay tiny (no peter-panning / shadows vanishing up
-            // close). ApplyPipeline re-owns cull on the next draw.
+            // store the back faces by culling front faces.
+            // a lit front-facing surface is then strictly nearer the light than
+            // the stored depth, which prevents self-shadow acne and keeps the
+            // bias small.
             Poseidon::render::cull::Front();
             glUseProgram(s_prog);
             glUniformMatrix4fv(s_locVP, 1, GL_FALSE, lightVPs + i * 16);
@@ -387,7 +391,7 @@ bool RenderCascadeArray(void* glContext, const float* lightVPs, int numCascades,
         }
         if (haveAlpha)
         {
-            Poseidon::render::cull::None(); // cutout foliage is two-sided
+            Poseidon::render::cull::None(); // cutout foliage is two-sided.
             glUseProgram(s_alphaProg);
             glUniformMatrix4fv(s_alphaLocVP, 1, GL_FALSE, lightVPs + i * 16);
             glUniform1i(s_alphaLocTex, 0);
@@ -417,8 +421,8 @@ bool EngineGLES32::ShadowDepthProbe(const float* lightVP16, const float* triXYZ,
     if (!outDepth)
         return false;
     const bool ok = RenderDepthFBO(_glContext, lightVP16, triXYZ, vertCount, res, outDepth);
-    // RenderDepthFBO writes cull/depth directly and restores only bindings; drop
-    // the pass-dedup cache so a later lit draw re-applies its raster state.
+    // RenderDepthFBO writes cull and depth directly and restores only bindings.
+    // drop the pass-dedup cache so a later lit draw re-applies its raster state.
     InvalidatePipelineCache();
     return ok;
 }
@@ -429,8 +433,8 @@ void EngineGLES32::RenderShadowDepthScene(const float* lightVPs, const float* sp
     if (numCascades > kShadowCascades)
         numCascades = kShadowCascades;
 
-    // Resolve each alpha batch's caster texture to a GL handle (loading its base
-    // mip if the depth pass beat the lit draw to it), like SetTexture does.
+    // resolve each alpha batch's caster texture to a gl handle, loading the base
+    // mip if the depth pass beats the lit draw to it.
     std::vector<ResolvedAlphaBatch> resolved;
     resolved.reserve(static_cast<size_t>(casters.alphaBatchCount));
     for (int b = 0; b < casters.alphaBatchCount; b++)
@@ -451,11 +455,10 @@ void EngineGLES32::RenderShadowDepthScene(const float* lightVPs, const float* sp
                                              resolved.data(), static_cast<int>(resolved.size()));
     if (numCascades >= 1)
     {
-        // The cascade loop writes cull::Front/None directly and RenderCascadeArray
-        // restores only bindings, not raster state. Drop the effort-06 pass-dedup
-        // cache so the next lit draw re-applies its own cull via ApplyPipeline
-        // instead of inheriting the depth pass's front-face cull (which would
-        // front-face-cull the geometry away). Mirrors the FlushQueue invalidation.
+        // the cascade loop writes cull::Front and cull::None directly, and
+        // RenderCascadeArray restores only bindings, not raster state.
+        // drop the effort-06 pass-dedup cache so the next lit draw re-applies
+        // its own cull via ApplyPipeline instead of inheriting front-face cull.
         InvalidatePipelineCache();
     }
     if (!rendered)
@@ -489,15 +492,15 @@ bool EngineGLES32::DumpShadowMap(const char* /*path*/)
 bool EngineGLES32::ShadowMapCacheSelfTest()
 {
     if (!_glContext)
-        return true; // no GL context — not applicable, don't fail the suite
+        return true; // no gl context; not applicable, so do not fail the suite.
 
     const bool savedActive = _shadowMapActive;
 
-    // Prime the pass-dedup cache as if a lit draw had just set it, then run a
-    // one-cascade depth pass on a tiny caster. The depth pass leaves cull::Front
-    // behind; the next identical-descriptor lit draw would short-circuit
-    // ApplyPipeline and inherit it, front-face-culling the geometry away — unless
-    // the depth pass invalidated the cache. Assert it did.
+    // prime the pass-dedup cache as if a lit draw had just set it, then run a
+    // one-cascade depth pass on a tiny caster.
+    // the depth pass leaves cull::Front behind; the next identical-descriptor
+    // lit draw would short-circuit ApplyPipeline and inherit it unless the depth
+    // pass invalidated the cache.
     _lastApplied.valid = true;
 
     const float lightVP[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};

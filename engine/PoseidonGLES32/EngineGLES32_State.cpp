@@ -15,10 +15,10 @@
 void EngineGLES32::CreateSamplerStates()
 {
     glGenSamplers(8, _samplerObjects);
-    // Sampler objects override the per-texture filter state, so they must match
-    // the trilinear + anisotropic setup from TextureGLES32_Init — mip-nearest with
-    // no anisotropy here made distant oblique textures (chain-link fences, fence
-    // tops) shimmer with bright pixel highlights as mip selection flipped.
+    // sampler objects override per-texture filter state, so they must match the
+    // trilinear and anisotropic setup from TextureGLES32_Init.
+    // a weaker sampler here made distant oblique textures shimmer as mip
+    // selection flipped.
     float maxAniso = 1.0f;
     glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
     const float aniso = maxAniso < 16.0f ? maxAniso : 16.0f;
@@ -40,7 +40,7 @@ void EngineGLES32::CreateSamplerStates()
             glSamplerParameterf(_samplerObjects[i], GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
         }
     }
-    // Bind default sampler (linear, wrap) to both texture units
+    // bind the default linear-wrap sampler to both texture units.
     glBindSampler(0, _samplerObjects[0]);
     glBindSampler(1, _samplerObjects[0]);
 }
@@ -54,11 +54,10 @@ void EngineGLES32::DestroySamplerStates()
 void EngineGLES32::ApplySamplerState()
 {
     int bits = (_pointSampling ? 4 : 0) | (_lastClampU ? 1 : 0) | (_lastClampV ? 2 : 0);
-    // Per-draw sampler routes through `BindSlot0` which physically
-    // can only bind slot 0 — slot 1 (detail/grass/specular) keeps
-    // the default linear-wrap sampler set during
-    // CreateSamplerStates().  B-022's "leftover slot-1 sampler"
-    // class is unrepresentable here: there is no `BindSlot1` helper.
+    // per-draw sampler routing goes through BindSlot0, which can only bind slot
+    // 0. slot 1 keeps the default linear-wrap sampler from CreateSamplerStates().
+    // the B-022 leftover-slot-1 class is unrepresentable here because there is
+    // no BindSlot1 helper.
     Poseidon::render::sampler::BindSlot0(_samplerObjects[bits]);
 }
 
@@ -67,8 +66,8 @@ void EngineGLES32::ApplyBlendMode(BlendMode mode)
     if (!_glContext)
         return;
     _currentBlendMode = mode;
-    // Each Poseidon::render::blend helper sets enable + func atomically; partial
-    // state ("blend enabled but func not set") is unrepresentable.
+    // each Poseidon::render::blend helper sets enable and function atomically;
+    // partial blend state is unrepresentable.
     switch (mode)
     {
         case BlendMode::Opaque:
@@ -92,12 +91,12 @@ void EngineGLES32::ApplyDepthMode(DepthMode mode)
         return;
     _currentDepthMode = mode;
 
-    // Each `Poseidon::render::depthstencil` helper sets depth-test / depth-func /
-    // depth-mask / stencil-state atomically for the named mode.
-    // Partial-state desync (e.g. depth-mask set but stencil left over
-    // from previous mode) is unrepresentable because no helper omits
-    // the stencil leg.  Matches D3D11's `D3D11_DEPTH_STENCIL_DESC`
-    // which bundles depth + stencil at the API level.
+    // each Poseidon::render::depthstencil helper sets depth-test, depth-func,
+    // depth-mask, and stencil state atomically for the named mode.
+    // partial desync, such as a depth mask with stale stencil state, is
+    // unrepresentable because no helper omits the stencil leg.
+    // this matches D3D11's D3D11_DEPTH_STENCIL_DESC, which bundles depth and
+    // stencil at the API level.
     namespace ds = Poseidon::render::depthstencil;
     switch (mode)
     {
@@ -123,10 +122,10 @@ void EngineGLES32::SetAlphaTest(bool enable, DWORD ref, bool alphaToCoverage)
     _psConstants.alphaRef[2] = alphaToCoverage ? 1.0f : 0.0f;
     _psConstants.alphaRef[3] = _debugFlatColor ? 1.0f : 0.0f;
     UploadPSConstant(PSConstants::SlotAlphaRef, _psConstants.alphaRef);
-    // Coverage comes from the fragment's output alpha (sharpened around the
-    // cutout threshold in the shader); the multisample resolve then grades
-    // sub-pixel cutout features instead of the alpha test keeping or killing
-    // the whole pixel.
+    // coverage comes from the fragment's output alpha, sharpened around the
+    // cutout threshold in the shader.
+    // the multisample resolve then grades sub-pixel cutout features instead of
+    // treating the whole pixel as kept or discarded.
     if (alphaToCoverage != _a2cBound)
     {
         if (alphaToCoverage)
@@ -137,30 +136,26 @@ void EngineGLES32::SetAlphaTest(bool enable, DWORD ref, bool alphaToCoverage)
     }
 }
 
-// Atomic pipeline bind reading from `RenderPassDescriptor`.  Declares
-// the full backend state every draw needs and forwards to the state-
-// helper functions (`ApplyDepthMode`, `ApplyBlendMode`, etc.) which
-// keep their own per-state caches (`_vertexShaderSel`,
-// `_pixelShaderSel`, `_formatSet`, `_texGenMode`) to short-circuit
-// redundant work.
+// atomic pipeline bind driven by RenderPassDescriptor.
+// the method declares the full backend state for each draw and forwards to
+// the state helpers, which keep their own caches and short-circuit redundant
+// work.
 //
-// Single source of truth: each helper's own cache.  ApplyPipeline
-// declares full state — partial state remains structurally impossible
-// — and forwards.  No outer diff layer: a second cache here would risk
-// falling out of sync with the helpers' caches.
+// each helper remains the source of truth for its own state. ApplyPipeline
+// does not maintain a second diff layer, which keeps the caches from falling
+// out of sync.
 //
-// Cull mode + front face come from `d.cull` / `d.frontFace` so
-// mirrored / shadow / double-sided draws bind the right winding
-// without a force-bind defensive symptom-fix.
+// cull mode and front face come from d.cull and d.frontFace so mirrored,
+// shadow, and double-sided draws bind the correct winding.
 void EngineGLES32::ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d)
 {
     if (!_glContext)
         return;
 
-    // Pass-state dedup (perf effort 06): identical descriptor under the same
-    // pass context means identical GL state — skip the re-apply. The A2C
-    // inputs (3D pass + coverage toggle) are part of the key because the
-    // alpha-test branch below derives from them, not just from d.
+    // pass-state dedup: an identical descriptor under the same pass context
+    // implies identical gl state, so skip the reapply.
+    // the A2C inputs belong in the key because the alpha-test branch below
+    // derives from them as well as from d.
     const bool ctxIn3d = IsIn3DPass();
     const bool ctxA2c = GetAlphaToCoverage();
     const PipelineVertexInput vertexInput = _pipelineVertexInput;
@@ -170,13 +165,10 @@ void EngineGLES32::ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d
         vertexInput == _lastApplied.vertexInput && d == _lastApplied.d)
         return;
 
-    // Validate the descriptor against the invariants listed in
-    // `ValidateRenderPassDescriptor.hpp`.  Violations come from a
-    // producer / translation bug (not from runtime data), so logging
-    // once per draw is fine — the warning identifies which invariant
-    // broke and the rest of the pipeline still binds.  In release
-    // builds the check is effectively free (return-on-success in a
-    // header-inlined linear scan).
+    // validate the descriptor against the invariants in
+    // ValidateRenderPassDescriptor.hpp.
+    // violations come from a producer or translation bug, not runtime data,
+    // so logging once per draw is enough.
     if (const char* invariant = Poseidon::render::ValidateRenderPassDescriptor(d))
     {
         LOG_DEBUG(Graphics, "GLES32: descriptor invariant violated: {} (pass={}, blend={}, depth={}, fog={})", invariant,
@@ -184,47 +176,43 @@ void EngineGLES32::ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d
                   static_cast<int>(d.fog));
     }
 
-    // -- Sampler --------------------------------------------------------
+    // -- sampler --------------------------------------------------------
     _pointSampling = (d.sampler.filter == Poseidon::render::SamplerFilter::Point);
     _lastClampU = d.sampler.clampU;
     _lastClampV = d.sampler.clampV;
     ApplySamplerState();
 
-    // -- Depth + stencil ------------------------------------------------
-    // Poseidon::render::DepthMode / BlendMode positions match the engine enums;
-    // static_cast through the underlying type keeps the conversion
-    // trivial.  A switch would be more defensive against future
-    // reordering, but the static_asserts further down would catch that.
+    // -- depth + stencil ------------------------------------------------
+    // Poseidon::render::DepthMode and BlendMode share the same enum ordering as
+    // the engine types, so a static_cast keeps the conversion trivial.
     ApplyDepthMode(static_cast<DepthMode>(static_cast<int>(d.depth)));
 
-    // -- Blend ----------------------------------------------------------
+    // -- blend ----------------------------------------------------------
     ApplyBlendMode(static_cast<BlendMode>(static_cast<int>(d.blend)));
 
-    // -- Fog ------------------------------------------------------------
+    // -- fog ------------------------------------------------------------
     SetShaderFogEnabled(d.fog == Poseidon::render::FogMode::Enabled);
 
-    // -- Alpha test ----------------------------------------------------
+    // -- alpha test ----------------------------------------------------
     const bool alphaTest =
         (d.alpha == Poseidon::render::AlphaMode::Test || d.alpha == Poseidon::render::AlphaMode::TestAndBlend);
-    // Alpha-to-coverage only on OPAQUE cutout draws in the 3D pass.  The
-    // blend gate is load-bearing: AlphaMode::Test also rides on blended
-    // descriptors (IsAlphaFog glass / IsLight flares / shadow quads use a
-    // ref=1 discard as a reject-fully-transparent optimization), and the A2C
-    // alpha-sharpening would snap their uniform partial alpha to 1 — vehicle
-    // glass rendered opaque white.  Screen-space (UI/HUD/fade) quads keep
-    // exact legacy alpha-test semantics, and A2C without MSAA samples just
-    // dithers.
+    // alpha-to-coverage is limited to opaque cutout draws in the 3d pass.
+    // the blend gate matters because AlphaMode::Test also appears on blended
+    // descriptors that rely on a ref=1 discard for fully transparent pixels.
+    // applying the A2C sharpening there would turn uniform partial alpha into
+    // 1 and make glass render opaque.
+    // screen-space UI, HUD, and fade quads keep the legacy alpha-test rules,
+    // and A2C without MSAA only dithers.
     const bool a2c = alphaTest && d.alpha == Poseidon::render::AlphaMode::Test &&
                      d.blend == Poseidon::render::BlendMode::Opaque && meshVertexInput && GetAlphaToCoverage();
     SetAlphaTest(alphaTest, d.alphaRef, a2c);
 
-    // -- Stencil exclusion (shadow path) -------------------------------
+    // -- stencil exclusion (shadow path) -------------------------------
     DoStencilExclusion(d.stencilExclusion, false);
 
-    // -- TexGen --------------------------------------------------------
-    // Engine's `TexGenMode` is an unscoped enum (TGNone / TGFixed / etc.)
-    // with a different ordering than Poseidon::render::TexGenMode — switch
-    // explicitly.
+    // -- texgen --------------------------------------------------------
+    // the engine's TexGenMode is an unscoped enum with a different ordering
+    // than Poseidon::render::TexGenMode, so switch explicitly.
     TexGenMode tg = TGNone;
     switch (d.texGen)
     {
@@ -255,9 +243,9 @@ void EngineGLES32::ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d
     switch (d.shader)
     {
         case Poseidon::render::ShaderFamily::Shadow:
-            // 3D vs screen-space shadow: VSShadow expects mesh-vertex
-            // layout; VSScreen reads TLVertex.  Picking the wrong VS
-            // would let it reinterpret subsequent draws' vertex data
+            // 3d shadow draws must use the mesh layout: VSShadow expects
+            // svertex data while VSScreen reads tlvertex. picking the wrong
+            // vertex shader would let it reinterpret later draws' vertex data.
             if (meshVertexInput)
             {
                 vs = VSShadow;
@@ -286,11 +274,10 @@ void EngineGLES32::ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d
             fmt = GrassTex;
             break;
         case Poseidon::render::ShaderFamily::Flat:
-            // Used by the fullscreen darken quad and similar screen-
-            // space overlays.  PSFlat is pure vertex-color passthrough;
-            // VSScreen matches the TLVertex layout the quad-builder
-            // uses.  Not selected by `BuildRenderPassDescriptor` —
-            // producers set `shader = Flat` explicitly.
+            // used by the fullscreen darken quad and similar screen-space
+            // overlays. PSFlat is a pure vertex-color passthrough, and
+            // VSScreen matches the tlvertex layout used by the quad builder.
+            // producers set shader = Flat explicitly.
             vs = VSScreen;
             ps = PSFlat;
             fmt = SingleTex;
@@ -308,16 +295,17 @@ void EngineGLES32::ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d
         SelectPixelShader(ps);
     SetMultiTexturing(fmt);
 
-    // -- Surface attachment -> polygon offset (I-09 OnSurface decals) --
-    // Ground-projected shadows are also OnSurface but need a stronger,
-    // angle-independent constant bias (the decal slope term collapses at
-    // steep / 3rd-person view angles, dropping the shadow's depth test).
+    // -- surface attachment -> polygon offset (I-09 on-surface decals) --
+    // ground-projected shadows are also on-surface, but they need a stronger
+    // angle-independent constant bias.
+    // the decal slope term collapses at steep or third-person view angles and
+    // would otherwise drop the shadow's depth test.
     if (d.shader == Poseidon::render::ShaderFamily::Shadow)
         Poseidon::render::pipeline::SetPolygonOffsetForShadows(true);
     else
         Poseidon::render::pipeline::SetPolygonOffsetForDecals(d.surface == Poseidon::render::SurfaceMode::OnSurface);
 
-    // -- Cull mode + winding (descriptor owns this; no force-bind) -----
+    // -- cull mode + winding (descriptor owns this; no force-bind) -----
     // Per-mode helpers in Poseidon::render::cull set both enable + face atomically.
     switch (d.cull)
     {

@@ -12,7 +12,7 @@ class TextBankGLES32;
 #include <Poseidon/Graphics/Core/MatrixConversion.hpp>
 #include <Poseidon/Graphics/Core/RenderState.hpp>
 
-// GL33 has no D3D profiling scopes; the macro is a no-op here.
+// the gles backend does not expose d3d profiling scopes.
 #define PROFILE_DX_SCOPE(name)
 
 #include <vector>
@@ -66,7 +66,7 @@ enum PixelShaderID
     PSGrass,
     PSWater,
     PSFlat,
-    PSShadow, // unlit cutout: constant black + alpha
+    PSShadow, // unlit cutout shader using constant black rgb and texture alpha.
     NPixelShaders,
     PSNone = NPixelShaders
 };
@@ -77,7 +77,7 @@ struct alignas(16) PSConstants
     {
         SlotFogColor = 0,
         SlotAlphaRef = 1,
-        SlotConstColor = 3, // per-object IsColored tint
+        SlotConstColor = 3,
         SlotLightDir = 4,
         SlotGrassCoef1 = 5,
         SlotGrassCoef2 = 6,
@@ -90,8 +90,8 @@ struct alignas(16) PSConstants
     float grassCoef1[4] = {0, 0, 0, 0};
     float grassCoef2[4] = {0, 0, 0, 0};
     float rgbEyeCoef[4] = {0, 0, 0, 1};
-    // Per-object IsColored tint, white = no-op.  Uploaded to SlotConstColor (3);
-    // kept last so the other fields keep their tested offsets (test_gl33_rendering).
+    // per-object tint. white is the identity value and uploads to slotconstcolor.
+    // keep this field last so the legacy memory layout stays stable.
     float constColor[4] = {1, 1, 1, 1};
 };
 
@@ -99,22 +99,21 @@ enum VertexShaderID
 {
     VSScreen,
     VSTransform,
-    VSShadow, // unlit transform, shadow path
+    VSShadow, // unlit transform used by the shadow depth pass.
     NVertexShaders,
     VSNone = NVertexShaders
 };
 
 namespace VSConst
 {
-// VS UBO layout — each slot is one vec4 (16 bytes).  Distinct
-// uniforms occupy disjoint byte ranges (I-01).  vpScale lives at
-// slot 21, disjoint from SlotProj (0), so VSScreen draws can never
-// clobber VSTransform's projection matrix and vice versa (B-001).
+// vertex shader uniform buffer layout. each slot covers one vec4.
+// uniform ranges do not overlap, so state updates stay isolated.
+// vpscale and proj stay in separate slots so 2d and 3d projection state cannot clobber each other.
 enum : int
 {
-    SlotProj = 0,  // 4 vec4s
-    SlotView = 4,  // 4 vec4s
-    SlotWorld = 8, // 4 vec4s
+    SlotProj = 0,
+    SlotView = 4,
+    SlotWorld = 8,
     SlotSunDir = 12,
     SlotAmbient = 13,
     SlotDiffuse = 14,
@@ -125,24 +124,24 @@ enum : int
     SlotSpecEn = 19,
     SlotSunEn = 20,
     SlotVpScale = 21,
-    // slots 22..23 reserved
-    SlotTexMat0 = 24, // 4 vec4s
-    SlotTexMat1 = 28, // 4 vec4s
+    // slots 22..23 stay unused.
+    SlotTexMat0 = 24,
+    SlotTexMat1 = 28,
     SlotTexCtrl = 32,
-    // Local (point/spot) lights for night per-vertex illumination.
-    SlotLightCount = 33,   // .x = active local light count
-    SlotLightPos = 34,     // MaxLocalLights vec4: xyz world pos, w = startAtten
-    SlotLightDiffuse = 42, // MaxLocalLights vec4: diffuse * nightEffect
-    SlotLightAmbient = 50, // MaxLocalLights vec4: ambient * nightEffect
-    SlotLightDir = 58,     // MaxLocalLights vec4: xyz beam dir (world), w = isSpot
-    SlotLightVP = 66,      // 4 vec4s: light view-projection for shadow-map sampling
+    // local light state for per-vertex night illumination.
+    SlotLightCount = 33,   // x component stores the active local-light count.
+    SlotLightPos = 34,     // maxlocallights * vec4: xyz stores world position, w stores start attenuation.
+    SlotLightDiffuse = 42, // maxlocallights * vec4: diffuse contribution after the night multiplier.
+    SlotLightAmbient = 50, // maxlocallights * vec4: ambient contribution after the night multiplier.
+    SlotLightDir = 58,     // maxlocallights * vec4: xyz stores world direction, w stores the spot flag.
+    SlotLightVP = 66,      // 4x vec4: light view-projection matrix used for shadow-map sampling.
 };
 
-// Per-draw cap on local lights folded into the vertex shader.
+// maximum number of local lights processed per vertex shader invocation.
 static constexpr int MaxLocalLights = 8;
 
-// I-01 tier 1: no two named ranges overlap.  Update this list
-// when adding a new register.
+// static assertions verify that uniform buffer register ranges do not overlap.
+// add any new slot definitions here and extend the checks at the same time.
 static_assert(SlotView >= SlotProj + 4, "SlotView overlaps SlotProj");
 static_assert(SlotWorld >= SlotView + 4, "SlotWorld overlaps SlotView");
 static_assert(SlotSunDir >= SlotWorld + 4, "SlotSunDir overlaps SlotWorld");
@@ -202,9 +201,8 @@ struct SVertex
     Poseidon::UVPair t0;
 };
 
-// Free-function override for hot-reload — when set (typically via CLI
-// --shader-override-dir), GL33's CompileGLShader prefers
-// `<dir>/<name>.glsl` over the inline source.  Empty = inline only.
+// shader hot-reload override directory.
+// when set, the shader compiler loads .glsl files from this path instead of embedded strings.
 void SetShaderOverrideDir(const std::string& dir);
 
 class EngineGLES32 : public Engine
@@ -212,9 +210,9 @@ class EngineGLES32 : public Engine
     typedef Engine base;
 
   protected:
-    int _w = 0, _h = 0; // back buffer dimensions
+    int _w = 0, _h = 0; // swapchain backbuffer dimensions.
     bool _resetNeeded = false;
-    TLVertexTable* _mesh = nullptr; // mesh data used during rendering
+    TLVertexTable* _mesh = nullptr; // active transformed and lit vertex data for the current draw.
 
     enum RenderMode
     {
@@ -228,16 +226,13 @@ class EngineGLES32 : public Engine
     bool _sunEnabled = false;
     Poseidon::TLMaterial _materialSet;
     int _materialSetSpec = 0;
-    // Signature of the LightList last uploaded by DoSetMaterial. SetMaterial's
-    // cache must re-upload when the lights change, not only when the material
-    // changes — otherwise a draw sharing a material with a prior lamp-less draw
-    // reuses its empty light list and renders unlit (black road under a lamp).
+    // cache key for the active local-light list.
+    // changing lights forces a re-upload even when the material is unchanged.
     uint64_t _materialSetLightsSig = 0;
 #ifndef NDEBUG
-    // Debug tripwire: signature of the frame-constant lighting inputs DoSetMaterial
-    // folds in but leaves OUT of the per-draw cache key. Asserts on a cache hit
-    // that they are unchanged — catches a cache that outlived its frame (a future
-    // omitted-input bug like the black-road one, in the cross-frame direction).
+    // diagnostic verification signature for frame-constant lighting state.
+    // checks that state folded into dosetmaterial matches the cached context.
+    // catches caches that survive into the next frame with stale lighting data.
     uint64_t _materialFrameInputsSig = 0;
 #endif
 
@@ -299,9 +294,6 @@ class EngineGLES32 : public Engine
         Normal,
         ReadOnly,
         Disabled,
-        // Per-poly shadow accumulation: stencil EQUAL 0 / INCR_SAT for
-        // within-caster exclusion; per-poly (1-srcA) blend darkens the
-        // framebuffer directly.
         Shadow
     };
 
@@ -333,14 +325,13 @@ class EngineGLES32 : public Engine
     TextBankGLES32* _textBank = nullptr;
 
   protected:
-    // GL context (SDL_GLContext, held as void* to keep SDL out of this header)
+    // sdl_glcontext handle.
+    // stored as a void pointer so this interface does not need SDL headers.
     void* _glContext = nullptr;
 
     int _prepSpec;
-    // Most recently bound TEXTURE1 handle.  Tracks SetMultiTexturing's
-    // resolved handle across its early-out path so each TL draw's
-    // captured DrawItem records the *currently bound* multi-tex even
-    // when the format didn't change since the previous draw.
+    // caches the texture object currently bound to texture unit 1.
+    // keeps recorded draw commands aligned with the handle when setmultitexturing exits early.
     unsigned int _lastTexture1Handle = 0;
     bool _stencilExclusionEnabled;
     TexGenMode _texGenMode;
@@ -350,38 +341,28 @@ class EngineGLES32 : public Engine
 
     QueueGLES32* _lastQueueSource;
 
-    // GL objects for dynamic 2D/queue rendering
-    unsigned int _vaoScreen = 0; // TLVertex layout (vsScreen: pos,rhw,color,specular,uv0,uv1)
-    unsigned int _vaoMesh = 0;   // SVertex layout (vsTransform: pos,normal,uv)
+    // core pipeline objects for dynamic and queued rendering.
+    unsigned int _vaoScreen = 0; // tlvertex layout bindings.
+    unsigned int _vaoMesh = 0;   // svertex layout bindings.
     unsigned int _vbo = 0;
     unsigned int _ibo = 0;
 
-    // 1x1 opaque-white sentinel.  Bound to any sampler that would otherwise
-    // reference a P3D face's missing texture.  GLSL has no fixed-function
-    // fallback for "no texture"; sampling the GL default texture (name 0)
-    // returns undefined data and triggers GL_LOW id=131204.  White makes
-    // `tex.rgb * vertColor.rgb` collapse to vertColor — the GLSL equivalent
-    // of D3D9 SELECTARG2(DIFFUSE), which is what the original FF pipeline
-    // did for untextured faces.
+    // 1x1 opaque white sentinel texture.
+    // binds to active samplers when a draw omits a texture map.
+    // sampler name 0 is undefined in glsl, so this keeps texture modulation a no-op against vertex colors.
     unsigned int _fallbackWhiteTex = 0;
 
   public:
-    // Dedicated upload texture unit.  All glTexImage2D / glTexSubImage2D /
-    // glCompressedTexSubImage2D calls run with this active so the engine's
-    // cached binding on unit 1 (_formatSet) remains accurate.  Without this,
-    // a demand-load between two draws of
-    // the same texture leaves GL bound to the just-uploaded handle while
-    // the cache still claims the previous draw's binding — the next
-    // `ApplyPassState` skips the rebind ("nothing changed") and the draw
-    // samples the wrong texture.  GL 3.3 guarantees ≥16 fragment image
-    // units; the engine uses 0 and 1, leaving 2..15 free.
-    static constexpr unsigned int kUploadUnit = 0x84C7; // GL_TEXTURE7
+    // dedicated texture unit for asynchronous uploads.
+    // isolates data transfer work so units 0 and 1 keep the active render state.
+    // prevents demand-loaded textures from stealing bindings between cached draw calls.
+    static constexpr unsigned int kUploadUnit = 0x84C7; // gl_texture7.
   protected:
     bool _lastClampU, _lastClampV;
     bool _pointSampling;
     bool _enableReorder;
 
-    // GL sampler objects: 8 combos of point(4) | clampU(1) | clampV(2)
+    // sampler objects mapped by bitfield: point mode (4) | clamp u (1) | clamp v (2).
     unsigned int _samplerObjects[8] = {};
     void CreateSamplerStates();
     void DestroySamplerStates();
@@ -389,37 +370,33 @@ class EngineGLES32 : public Engine
 
     TexLoc _texLoc;
 
-    // Capability constants — fixed for GL 3.3 Core on desktop drivers (every
-    // desktop GL 3.3 driver supports them), so they fold at compile time
-    // instead of being queried at runtime.
+    // static capability guarantees.
+    // evaluated at compile time so baseline feature checks disappear.
     static constexpr bool _can565 = true;
     static constexpr bool _can88 = false;
     static constexpr bool _can8888 = true;
 #ifdef __ANDROID__
-    // DXT support is queried at runtime on Android (Adreno supports S3TC, Mali typically does not).
+    // texture compression support mask.
+    // queried at runtime on android because mali hardware often lacks native s3tc.
     int _dxtFormats = 0; 
 #else
-    int _dxtFormats = 0x3E; // DXT1..DXT5
+    int _dxtFormats = 0x3E;
 #endif
     static constexpr bool _hasStencilBuffer = true;
     static constexpr bool _canDetailTex = true;
     static constexpr bool _canZBias = true;
 
-    // MSAA alpha-to-coverage.  _msaaActive: the default framebuffer actually
-    // got multisample buffers (driver may quietly downgrade the request).
-    // _alphaToCoverageCfg: the GraphicsConfig knob.  _a2cBound caches the
-    // GL_SAMPLE_ALPHA_TO_COVERAGE enable so ApplyPipeline doesn't reissue it
-    // per draw.
+    // hardware alpha-to-coverage state tracking.
+    // tracks whether the swapchain actually provisioned multisample buffers.
+    // caches the toggle state to minimize driver calls during draw emission.
     bool _msaaActive = false;
     bool _alphaToCoverageCfg = true;
     bool _a2cBound = false;
     bool _debugFlatColor = false;
 
-    // SSAA render-scale state.  _ssaaFbo != 0 == active.  The scaled target is
-    // multisampled (4x — combined with the scale that beats the default FB's
-    // 8x while keeping VRAM sane); _ssaaResolveFbo is the same-size
-    // single-sample stage the MSAA resolve lands in before the downsample
-    // blit to the window.
+    // supersample anti-aliasing resources.
+    // scaling is active when the target framebuffer object is non-zero.
+    // renders into a 4x multisampled high-resolution buffer before resolving into a single-sample downscale target.
     float _renderScale = 1.0f;
     float _pendingRenderScale = 1.0f;
     int _msaaSamples = 0;
@@ -433,21 +410,19 @@ class EngineGLES32 : public Engine
     int _ssaaH = 0;
 
     bool SSAAActive() const { return _ssaaFbo != 0; }
-    // Pixel size of the current render target: the scaled offscreen target
-    // when SSAA is active, else the window.  Every glViewport/glScissor that
-    // addresses the frame target derives from this.
+    // evaluates the pixel dimensions of the active render surface.
+    // determines viewport and scissor bounds for the current frame target.
     void RenderTargetSize(int& w, int& h) const;
     void ApplyPendingRenderScale();
     void DestroySSAATarget();
-    // Resolve + downsample the scaled target into the default framebuffer and
-    // leave it bound for reading.  No-op when SSAA is off.
+    // blits the supersampled render target down into the swapchain backbuffer.
+    // is a no-op when supersampling is disabled.
     void ResolveSSAAToDefault();
-    // Bind the frame render target (scaled FBO or default) for drawing and
-    // restore its full viewport.
+    // establishes the primary draw target for the frame and restores canonical viewport bounds.
     void BindFrameRenderTarget();
 
-    // GL shader programs.  GL33 always uses shaders — there is no
-    // fixed-function path to gate against.
+    // shader program object registry.
+    // maps vertex and pixel shader combinations to linked driver handles.
     unsigned int _shaderProgram[NVertexShaders][NPixelShaderSpecular][NPixelShaderModes][NPixelShaders];
     PixelShaderID _pixelShaderSel;
     PixelShaderMode _pixelShaderModeSel;
@@ -455,10 +430,8 @@ class EngineGLES32 : public Engine
     PSConstants _psConstants;
 
     VertexShaderID _vertexShaderSel = VSNone;
-    // _frameState.fogParams[] is the single source of truth for the shader fog
-    // uniform; SetShaderFogEnabled mutates it in place so subsequent
-    // UploadFrameConstants re-uploads (e.g. from EnableSunLight) preserve
-    // whichever fog state the active pass last asked for.
+    // canonical storage for environmental fog configuration.
+    // mutating this struct in place keeps shader constants synchronized across state invalidations.
     FrameState _frameState;
     std::vector<DrawItem> _drawItems;
     DrawItem _currentDrawItem;
@@ -473,13 +446,9 @@ class EngineGLES32 : public Engine
 
     QueueGLES32 _queueNo;
 
-    // Deferred VBO upload. AddVertices copies into this CPU mirror and bumps
-    // _queueNo._vertexBufferUsed; the glBufferSubData is batched once per flush
-    // (UploadPendingVertices, called from FlushQueue before each draw) instead
-    // of once per primitive — the map background alone submits tens of
-    // thousands of tiny polys per frame, and a driver upload each was the
-    // dominant cost.  _vboUploadedVerts is the first mirror vertex not yet
-    // uploaded to the GL buffer.
+    // deferred vertex buffer mirror.
+    // accumulates cpu-side vertex writes and flushes them to the gpu buffer in large blocks before drawing.
+    // reduces driver overhead from submitting thousands of individual primitives.
     std::vector<TLVertex> _vboMirror;
     int _vboUploadedVerts = 0;
 
@@ -505,33 +474,21 @@ class EngineGLES32 : public Engine
         Mesh
     };
 
-    // Atomic pipeline bind reading from `Poseidon::render::RenderPassDescriptor` —
-    // declares the full backend state for a single draw and forwards to
-    // the per-state helpers (`ApplyDepthMode`, `ApplyBlendMode`,
-    // `SelectVertexShader`, etc.) which each maintain their own cache.
-    // Every caller (the spec-driven `ApplyPassState` path and special-
-    // purpose post-processes like the shadow darken pass) builds a
-    // `RenderPassDescriptor` and forwards it here.
+    // applies the full rendering pipeline state from a descriptor struct.
+    // dispatches state changes to the individual cache helpers.
+    // establishes the graphics context configuration required by the next draw call.
     void ApplyPipeline(const Poseidon::render::RenderPassDescriptor& d);
 
   public:
-    // Pass-boundary markers — forwarded to GL_KHR_debug if the
-    // loader picked up the function pointers (GL 4.3 core or
-    // KHR_debug extension).  Guarded for older contexts where the
-    // pointer is null (defensive — debug callback init already
-    // reports KHR_debug availability).  Defined in EngineGLES32.cpp
-    // so the gl.h include stays out of public headers.
+    // diagnostic region markers for graphics profilers.
+    // forwards to the driver debug extension when it is available.
     void BeginDebugGroup(const char* name) override;
     void EndDebugGroup() override;
 
-    // Reads live GL viewport via glGetIntegerv(GL_VIEWPORT).
-    // Implemented in EngineGLES32.cpp so the gl.h dependency stays
-    // contained.
+    // queries the active viewport bounds directly from driver state.
     bool GetGLViewport(int outRect[4]) const override;
 
-    // The emission seam — issues glBindVertexArray + glDrawElements
-    // for the typed Draw.  Implemented in EngineGLES32_VertexBuffer.cpp
-    // next to its DrawSectionTL caller.
+    // dispatches the active draw configuration to the graphics hardware.
     void EmitDraw(const Poseidon::render::frame::Draw& d) override;
 
     // --- Properties ---
@@ -592,7 +549,7 @@ class EngineGLES32 : public Engine
 
     bool Reset();
     bool ResetHard();
-    void ResetForRemount() override; // mod re-mount: drop+rebuild GPU, keep window
+    void ResetForRemount() override; // re-initializes gpu resources without tearing down the display surface.
 
     bool SwitchRes(int w, int h, int bpp) override;
     bool SwitchRefreshRate(int refresh) override;
@@ -637,8 +594,7 @@ class EngineGLES32 : public Engine
     void SetGamma(float gamma) override;
     float GetGamma() const override { return _gamma; }
 
-    // Event-loop hooks (IGraphicsEngine) — forward to the embedded
-    // SDLEventWindow helper.
+    // delegates os event processing to the embedded window handler.
     void HandleEvents() override { _eventWindow.HandleEvents(); }
     bool IsOpen() const override { return _eventWindow.IsOpen(); }
     void SetMouseGrab(bool grab) override { _eventWindow.SetMouseGrab(grab); }
@@ -663,22 +619,21 @@ class EngineGLES32 : public Engine
                                 int numCascades, int omniCount, int res, const ShadowCasterSet& casters) override;
     bool DumpShadowMap(const char* path) override;
     bool ShadowMapCacheSelfTest() override;
-    // Per-pass: bind the cascade depth-map array to unit 2 and upload the per-
-    // cascade light-VPs + the shadow control vec4 so the lit shaders darken
-    // shadowed fragments.  Defined in EngineGLES32_Shaders.cpp (next to the UBO
-    // arrays); called from BeginPass.  No-op unless a depth pass ran this frame.
+    // establishes texture and uniform bindings for shadow-map evaluation.
+    // populates cascade matrices and depth maps so lit passes can calculate occlusion.
+    // is a no-op when no shadow geometry was processed.
     void UpdateShadowMapLitState();
 
-    ShadowMapTuning _shadowTuning;                 // runtime knobs (FP parameter set)
-    float _shadowSunFactor = 1.0f;                 // day/night fade [0,1]; 0 at night (no sun shadow)
-    bool _shadowMapActive = false;                 // a depth pass ran this frame
-    unsigned int _shadowMapTex = 0;                // GL depth texture ARRAY to sample
-    int _shadowMapRes = 0;                         // its resolution
-    int _shadowCascades = 0;                       // active cascade count this frame
-    int _shadowOmniCount = 0;                      // leading omni (camera-sphere) tiers — distance-selected
-    float _shadowMapVP[kShadowCascades * 16] = {}; // per-cascade light view-projections (column-major)
-    float _shadowSplits[kShadowCascades] = {};     // per-tier select distance (omni: 3D radius; frustum: eye far)
-    float _shadowCamFwd[3] = {};                   // camera forward (for eye-depth cascade select)
+    ShadowMapTuning _shadowTuning;                 // runtime configuration block.
+    float _shadowSunFactor = 1.0f;                 // modulates shadow intensity based on time of day.
+    bool _shadowMapActive = false;                 // tracks whether depth evaluation is required this frame.
+    unsigned int _shadowMapTex = 0;                // depth texture array object.
+    int _shadowMapRes = 0;                         // shadow buffer resolution.
+    int _shadowCascades = 0;                       // active count of split cascades.
+    int _shadowOmniCount = 0;                      // cascade threshold for omni-directional spheres.
+    float _shadowMapVP[kShadowCascades * 16] = {}; // column-major view-projection matrices per cascade.
+    float _shadowSplits[kShadowCascades] = {};     // linear distance thresholds for cascade selection.
+    float _shadowCamFwd[3] = {};                   // view-space forward vector for cascade evaluation.
 
     void GetZCoefs(float& zAdd, float& zMult) override;
     void SetBias(int bias) override;
@@ -750,10 +705,9 @@ class EngineGLES32 : public Engine
     void ApplyPassState(TextureGLES32* tex, int level, const Poseidon::render::LegacySpec& spec, Poseidon::PassId passId,
                         PipelineVertexInput vertexInput);
 
-    // Pass-state dedup (perf effort 06): ApplyPipeline short-circuits when
-    // the descriptor and its pass context match the last applied state.
-    // Any GL pipeline-state write outside ApplyPipeline must call
-    // InvalidatePipelineCache() (B-007).
+    // filters redundant state transitions.
+    // skips pipeline rebinding when the incoming pass descriptor matches the existing context.
+    // manual driver state changes must explicitly invalidate this cache block.
     struct
     {
         Poseidon::render::RenderPassDescriptor d;
@@ -765,12 +719,9 @@ class EngineGLES32 : public Engine
     PipelineVertexInput _pipelineVertexInput = PipelineVertexInput::ActivePass;
     void InvalidatePipelineCache() { _lastApplied.valid = false; }
 
-    // Instanced-run mode (perf effort 08): Scene wraps one Shape::Draw in
-    // Begin/EndInstancedRun after uploading K world matrices to the
-    // WorldInstances UBO; every TL EmitDraw inside the run issues
-    // glDrawElementsInstanced(K) instead. Non-TL emission (vertex-soup
-    // queue) inside the run marks it impure -> caller falls back to scalar
-    // draws for the remaining instances.
+    // hardware instancing state tracker.
+    // groups identical mesh draws into batched instanced calls driven by a transform buffer.
+    // dynamic geometry emission within a run forces a fallback to scalar dispatch.
     void BeginInstancedRun(int count)
     {
         _instCount = count;
@@ -783,8 +734,7 @@ class EngineGLES32 : public Engine
         return pure;
     }
     void UploadWorldInstances(const float* matrices, int count);
-    // Run accumulation: Scene adds model-to-world transforms; the engine
-    // converts (camera-relative GfxMatrix) and uploads on BeginInstancedRunUpload.
+    // collects and converts model-to-world transforms into camera-relative matrices for uniform upload.
     void InstancedRunReset() override { _instPending = 0; }
     bool InstancedRunAdd(const Matrix4& modelToWorld) override;
     int InstancedRunPending() const { return _instPending; }
@@ -801,14 +751,13 @@ class EngineGLES32 : public Engine
     bool GetTL() const override { return true; }
     bool GetTLOnSurface() const override { return true; }
 
-    // MSAA alpha-to-coverage (config knob; effective only when the default
-    // framebuffer actually got MSAA samples — see _msaaActive).
+    // toggles hardware alpha-to-coverage evaluation when multisampling is provisioned.
     void SetAlphaToCoverage(bool enable) override { _alphaToCoverageCfg = enable; }
     bool GetAlphaToCoverage() const override { return _alphaToCoverageCfg && _msaaActive; }
 
-    // Diagnostic flat shading: object draws output solid red (alpha-test
-    // silhouette + cutouts preserved) so a shading/texture highlight can be told
-    // apart from a geometry one.  Uploaded via alphaRef.w (see SetAlphaTest).
+    // diagnostic flat shading mode.
+    // forces objects to render solid red while preserving alpha testing and clipping.
+    // highlights geometry borders separately from texture data.
     void SetDebugFlatColor(bool enable) override
     {
         _debugFlatColor = enable;
@@ -816,10 +765,8 @@ class EngineGLES32 : public Engine
     }
     bool GetDebugFlatColor() const override { return _debugFlatColor; }
 
-    // SSAA render scale.  Applied at the next frame boundary (swap) — an
-    // offscreen multisampled target at scale x window size receives the whole
-    // frame (3D + HUD), resolved + downsampled to the window before swap and
-    // before any framebuffer readback.
+    // sets the supersampling resolution scale factor.
+    // changes take effect on the next frame swap so target dimensions stay coherent during active rendering.
     void SetRenderScale(float scale) override;
     float GetRenderScale() const override { return _renderScale; }
     void SetMsaaSamples(int samples) override;
@@ -833,15 +780,14 @@ class EngineGLES32 : public Engine
     void BeginPass(Poseidon::PassId passId);
     void BeginScreenPass();
 
-    // KHR_debug pass groups — one open group per active pass, switched at
-    // the real pass transitions so captures bracket the draws they name.
+    // groups render passes logically for external graphics debuggers.
     void SwitchPassDebugGroup(const char* name);
     void ClosePassDebugGroup();
     bool _passDebugGroupOpen = false;
 
     void DiscardVB();
     void AddVertices(const TLVertex* v, int n);
-    void UploadPendingVertices(); // flush the deferred _vboMirror range to the GL buffer
+    void UploadPendingVertices(); // commits the deferred cpu vertex mirror to driver memory.
 
   public:
     bool IsIn3DPass() const { return _activePassId != Poseidon::PassId::ScreenSpace; }
@@ -852,9 +798,8 @@ class EngineGLES32 : public Engine
 
     void UpdateProjection() override;
 
-    // World-viewport crop (aspect pillarbox / manual noodle).  The 3D
-    // scene renders into the AspectSettings world rect; the periphery is
-    // filled black on the 3D->2D transition.  No-op when the rect is full.
+    // enforces aspect-ratio boundaries via viewport cropping.
+    // restricts the 3d projection to a sub-rectangle and clears the margins.
     void ApplyWorldViewport();
     void EndWorldViewport();
     bool _worldViewportActive = false;
@@ -943,16 +888,10 @@ class EngineGLES32 : public Engine
     float LandMipmapCoef() const { return 1.0f; }
 
   private:
-    // I-05 / B-019 RAII shutdown guard.  Declared LAST so its
-    // destructor runs FIRST in the EngineGLES32 teardown chain —
-    // before `_textBank` (declared earlier) is destroyed, which
-    // is when the base class's `_fonts` FontCache still holds
-    // valid `Ref<Texture>` slots into the bank.  The guard clears
-    // the font cache while the bank is still alive; subsequent
-    // member destruction then sees an empty `_fonts` so the
-    // natural base-class destructor is a no-op for that field.
-    // Member order is the enforcement: C++ destroys members in
-    // reverse declaration order, then base members.
+    // raii teardown sequence guard.
+    // declared at the bottom of the class so it is destroyed first during class destruction.
+    // clears the base class font cache before the backend text bank is uninitialized.
+    // prevents dangling texture references from being released into a destroyed context.
     struct ShutdownGuard
     {
         EngineGLES32* engine;

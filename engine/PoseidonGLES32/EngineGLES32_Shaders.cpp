@@ -16,30 +16,31 @@
 #include <map>
 #include <vector>
 
-// Screen-space vertex shader (pre-transformed TLVertex).
-// Attribute layout matches VAO: pos(vec3)@0, rhw(float)@1, color@2, specular@3, uv0@4, uv1@5
+// screen-space vertex shader for pre-transformed tlvertex data.
+// the attribute layout matches the vao: pos(vec3)@0, rhw(float)@1, color@2,
+// specular@3, uv0@4, and uv1@5.
 static const char s_vsScreenGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
-// Shared VS UBO; vsScreen reads vpScale at slot 21 (offset 336 bytes).
-// The 21-slot prefix is laid out so the byte offsets match what
-// vsTransform reads; vsScreen ignores those fields, but std140
-// requires the layout to match the shared binding's contents.
+// shared vs ubo; vsScreen reads vpScale at slot 21 (offset 336 bytes).
+// the 21-slot prefix keeps the byte offsets aligned with what vsTransform
+// reads. vsScreen ignores those fields, but std140 requires the shared binding
+// layout to match the full contents.
 layout(std140) uniform VSConstants {
-    mat4 _pad_proj;     // slots 0..3 — VSTransform's projection
-    mat4 _pad_view;     // slots 4..7
-    mat4 _pad_world;    // slots 8..11
-    vec4 _pad_sunDir;   // slot 12
-    vec4 _pad_ambient;  // 13
-    vec4 _pad_diffuse;  // 14
-    vec4 _pad_emissive; // 15
-    vec4 _pad_fog;      // 16
-    vec4 _pad_camPos;   // 17
-    vec4 _pad_spec;     // 18
-    vec4 _pad_specEn;   // 19
-    vec4 _pad_sunEn;    // 20
-    vec4 vpScale;       // 21 — {2/width, 2/height, 0, 0}
+    mat4 _pad_proj;     // slots 0..3 - VSTransform projection.
+    mat4 _pad_view;     // slots 4..7.
+    mat4 _pad_world;    // slots 8..11.
+    vec4 _pad_sunDir;   // slot 12.
+    vec4 _pad_ambient;  // slot 13.
+    vec4 _pad_diffuse;  // slot 14.
+    vec4 _pad_emissive; // slot 15.
+    vec4 _pad_fog;      // slot 16.
+    vec4 _pad_camPos;   // slot 17.
+    vec4 _pad_spec;     // slot 18.
+    vec4 _pad_specEn;   // slot 19.
+    vec4 _pad_sunEn;    // slot 20.
+    vec4 vpScale;       // slot 21 - {2/width, 2/height, 0, 0}.
 };
 
 layout(location = 0) in vec3 aPos;
@@ -67,46 +68,46 @@ void main() {
     vUV0 = aUV0;
     vUV1 = aUV1;
     vFogTC = aSpecular.a;
-    vWorldRel = vec3(0.0); // screen draws are never shadow-mapped
+    vWorldRel = vec3(0.0); // screen draws are never shadow-mapped.
 }
 )";
 
-// 3D mesh vertex shader with lighting, fog, and texture generation.
-// Separate Proj/View/World transform.
+// 3d mesh vertex shader with lighting, fog, and texture generation.
+// the projection, view, and world transforms are separate.
 static const char s_vsTransformGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 layout(std140) uniform VSConstants {
-    mat4 proj;          // c0-c3
-    mat4 view;          // c4-c7
-    mat4 world;         // c8-c11
-    vec4 sunDir;        // c12
-    vec4 ambient;       // c13
-    vec4 diffuse;       // c14
-    vec4 emissive;      // c15
-    vec4 fogParam;      // c16: {start, invRange, enabled, 0}
-    vec4 camPos;        // c17
-    vec4 specular;      // c18: rgb + power(w)
-    vec4 specEn;        // c19: {enabled, 0, 0, 0}
-    vec4 sunEn;         // c20: {enabled, 0, 0, 0}
-    vec4 vpScale;       // c21: {2/width, 2/height, 0, 0} — VSScreen only, declared here for layout parity
+    mat4 proj;          // c0-c3.
+    mat4 view;          // c4-c7.
+    mat4 world;         // c8-c11.
+    vec4 sunDir;        // c12.
+    vec4 ambient;       // c13.
+    vec4 diffuse;       // c14.
+    vec4 emissive;      // c15.
+    vec4 fogParam;      // c16: {start, invRange, enabled, 0}.
+    vec4 camPos;        // c17.
+    vec4 specular;      // c18: rgb + power(w).
+    vec4 specEn;        // c19: {enabled, 0, 0, 0}.
+    vec4 sunEn;         // c20: {enabled, 0, 0, 0}.
+    vec4 vpScale;       // c21: {2/width, 2/height, 0, 0}; VSScreen uses it, and it stays here for layout parity.
     vec4 _pad22;
     vec4 _pad23;
     mat4 texMat0;       // c24-c27
     mat4 texMat1;       // c28-c31
-    vec4 texCtrl;       // c32: {genTex0, genTex1, 0, 0}
-    vec4 lightCount;        // c33: x = active local light count
-    vec4 lightPos[8];       // c34-c41: xyz world pos, w = startAtten
-    vec4 lightDiffuse[8];   // c42-c49: diffuse * nightEffect
-    vec4 lightAmbient[8];   // c50-c57: ambient * nightEffect
-    vec4 localLightDir[8];  // c58-c65: xyz beam dir (world), w = isSpot
-    mat4 lightVP;           // c66-c69: shadow-map light view-projection (sampled per fragment)
+    vec4 texCtrl;       // c32: {genTex0, genTex1, 0, 0}.
+    vec4 lightCount;    // c33: x = active local light count.
+    vec4 lightPos[8];   // c34-c41: xyz world position, w = startAtten.
+    vec4 lightDiffuse[8]; // c42-c49: diffuse * nightEffect.
+    vec4 lightAmbient[8]; // c50-c57: ambient * nightEffect.
+    vec4 localLightDir[8]; // c58-c65: xyz beam direction in world space, w = isSpot.
+    mat4 lightVP;       // c66-c69: shadow-map light view-projection sampled per fragment.
 };
 
-// Per-instance world matrices (perf effort 08). Plain glDrawElements has
-// gl_InstanceID == 0, so slot 0 carries the classic single world matrix
-// and non-instanced draws are unchanged.
+// per-instance world matrices (perf effort 08).
+// plain glDrawElements has gl_InstanceID == 0, so slot 0 carries the classic
+// single world matrix and non-instanced draws are unchanged.
 layout(std140) uniform WorldInstances {
     mat4 worldArr[256];
 };
@@ -127,21 +128,22 @@ void main() {
     vec3 worldNormal = normalize(mat3(worldArr[gl_InstanceID]) * normal);
     vec4 viewPos     = view * worldPos;
     gl_Position      = proj * viewPos;
-    vWorldRel        = worldPos.xyz; // camera-relative world pos for cascade shadow lookup
+    vWorldRel        = worldPos.xyz; // camera-relative world position for cascade shadow lookup.
 
     float NdotL = max(0.0, dot(worldNormal, -sunDir.xyz));
     vec4 litColor;
     litColor.rgb = emissive.rgb + ambient.rgb * sunEn.x + diffuse.rgb * NdotL * sunEn.x;
     litColor.a   = emissive.a   + ambient.a   * sunEn.x + diffuse.a   * NdotL * sunEn.x;
 
-    // Local lights (street lamps, vehicle headlights) — per-vertex contribution
-    // mirroring the legacy LightPoint::Apply / LightReflector::Apply.  toLight =
-    // lightPos - vertex (world space); diffuse uses the outward-normal convention
-    // of the sun term above.  Quadratic falloff past startAtten, cut off at 100x.
-    // Spotlights (localLightDir.w > 0.5) additionally gate by a cone factor: full
-    // inside cos 8deg, zero outside cos 12deg, linear in cos^2 between.
-    const float MIN_INSIDE2 = 0.95677279; // (cos 12deg)^2
-    const float MAX_INSIDE2 = 0.98063081; // (cos 8deg)^2
+    // local lights, such as street lamps and vehicle headlights, contribute per
+    // vertex and mirror the legacy LightPoint::Apply and LightReflector::Apply.
+    // toLight is lightPos minus vertex in world space; diffuse uses the outward
+    // normal convention from the sun term above.
+    // falloff is quadratic after startAtten and is cut off at 100x.
+    // spotlights gate by a cone factor: full inside cos 8deg, zero outside cos
+    // 12deg, and linear in cos^2 between.
+    const float MIN_INSIDE2 = 0.95677279; // (cos 12deg)^2.
+    const float MAX_INSIDE2 = 0.98063081; // (cos 8deg)^2.
     int nLights = int(lightCount.x);
     for (int i = 0; i < nLights; i++)
     {
@@ -155,7 +157,7 @@ void main() {
         float cone = 1.0;
         if (localLightDir[i].w > 0.5)
         {
-            // inside = (vertex - light) . beamDir; cos^2(angleFromAxis) = inside^2/size2
+            // inside = (vertex - light) . beamDir; cos^2(angleFromAxis) = inside^2 / size2.
             float inside = -dot(toLight, localLightDir[i].xyz);
             if (inside <= 0.0)
                 continue;
@@ -201,24 +203,24 @@ void main() {
 }
 )";
 
-// PSNormal — diffuse * texture + specular + fog + night vision
+// psnormal: diffuse times texture, plus specular, fog, and night vision.
 static const char s_psNormalGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 layout(std140) uniform PSConstants {
     vec4 fogColor;    // c0
-    vec4 alphaRef;    // c1: {ref, enabled, alphaToCoverage, flatDebug}
-    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}
-    vec4 constColor; // c3: per-object IsColored tint (white = no-op)
+    vec4 alphaRef;    // c1: {ref, enabled, alphaToCoverage, flatDebug}.
+    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}.
+    vec4 constColor;  // c3: per-object IsColored tint; white is the identity.
     vec4 _pad4;
     vec4 _pad5;
     vec4 _pad6;
-    vec4 rgbEyeCoef;  // c7
-    mat4 cascadeVP[4]; // c8-c23: per-cascade light view-projection
-    vec4 cascadeSplits;// c24: per-tier select distance (omni: radius; frustum: far eye-depth)
-    vec4 cascadeCtl;   // c25: {count, fadeRange, biasBase, omniCount}
-    vec4 camFwd;       // c26: camera forward (eye-depth = dot(vWorldRel, camFwd))
+    vec4 rgbEyeCoef;   // c7.
+    mat4 cascadeVP[4]; // c8-c23: per-cascade light view-projection.
+    vec4 cascadeSplits;// c24: select distance per tier; omni tiers use radius and frustum tiers use far eye-depth.
+    vec4 cascadeCtl;   // c25: {count, fadeRange, biasBase, omniCount}.
+    vec4 camFwd;       // c26: camera forward; eye-depth is dot(vWorldRel, camFwd).
 };
 
 uniform sampler2D tex0;
@@ -229,34 +231,34 @@ in vec2 vUV0;
 in vec2 vUV1;
 in float vFogTC;
 
-uniform sampler2DArray shadowMap; // unit 2 — cascade depth-map array (unused unless shadowCtl.x>0.5)
+uniform sampler2DArray shadowMap; // unit 2: cascade depth-map array, unused unless shadowCtl.x > 0.5.
 in vec3 vWorldRel;
 
 out vec4 fragColor;
 
 void main() {
-    // No gl_FragDepth — opaque draws use DepthMode::Normal (stencil
-    // ALWAYS+REPLACE 0).  Even if early-Z fires the stencil write
-    // before discard, REPLACE 0 to a stencil already 0 (cleared at
-    // frame start, never written non-zero outside the shadow
-    // accumulator pass) is idempotent.  Removing the late-test forcing
-    // lets early-Z and hierarchical-Z work — meaningful perf win on
-    // opaque-heavy scenes.
+    // no gl_FragDepth: opaque draws use DepthMode::Normal with stencil
+    // ALWAYS plus REPLACE 0.
+    // even if early-z fires the stencil write before discard, replacing 0 on a
+    // buffer that is already 0 is idempotent.
+    // removing the late-test forcing lets early-z and hierarchical-z work,
+    // which is a meaningful win on opaque-heavy scenes.
     vec4 r0 = vColor * texture(tex0, vUV0);
-    r0 *= constColor; // per-object IsColored tint (opacity + fade); white = no-op
+    r0 *= constColor; // per-object IsColored tint for opacity and fade; white is the identity.
     r0.rgb += vSpecColor.rgb;
 
     if (shadowCtl.x > 0.5) {
-        // Tiered shadow maps: the first omniCount tiers are camera-centred spheres
-        // (selected by 3D distance, so a caster in ANY direction around the player —
-        // including behind the camera — casts into view); the rest are frustum
-        // slices reaching the far view distance (selected by eye-depth). Pick the
-        // tightest matching tier, then advance to the first tier whose projection is
-        // in bounds (coverage fallthrough, so a too-tight near tier never drops the
-        // shadow). 3x3-PCF the layer, cross-fade to the next tier over a band, fade
-        // at the far edge, and dim by the fog factor so distant shadows aren't harsh.
-        // cascadeCtl = {count, fadeRange, biasBase, omniCount}; cascadeSplits =
-        // per-tier select distance (omni: sphere radius; frustum: far eye-depth).
+        // tiered shadow maps use camera-centred sphere tiers first and frustum
+        // tiers afterward.
+        // the sphere tiers are selected by 3d distance so casters behind the
+        // camera can still cast into view; frustum tiers are selected by eye-depth.
+        // pick the tightest matching tier, then fall through to the next tier if
+        // the projection is out of bounds so a too-tight near tier does not drop
+        // the shadow.
+        // apply 3x3 pcf, cross-fade to the next tier over a band, fade at the far
+        // edge, and dim by fog so distant shadows stay soft.
+        // cascadeCtl is {count, fadeRange, biasBase, omniCount}; cascadeSplits is
+        // the select distance per tier.
         int nC = int(cascadeCtl.x);
         int omniN = int(cascadeCtl.w);
         float eyeDepth = dot(vWorldRel, camFwd.xyz);
@@ -278,8 +280,8 @@ void main() {
             for (int p = 0; p < 4; ++p) {
                 int c = ci + p;
                 if (c >= nC) break;
-                // p0 = primary, p1 = blend partner; while nothing has covered yet a
-                // later p force-samples the next looser tier (coverage fallthrough).
+                // p0 is the primary tier and p1 is the blend partner; if nothing has
+                // covered yet, later p values force-sample the next looser tier.
                 float w = (p == 0) ? (1.0 - bw) : ((wSum <= 0.0) ? 1.0 : ((p == 1) ? bw : 0.0));
                 if (w <= 0.0) continue;
                 vec4 cp = cascadeVP[c] * vec4(vWorldRel, 1.0);
@@ -299,16 +301,16 @@ void main() {
                 float lit = litSum / wSum;
                 float lastSplit = cascadeSplits[nC - 1];
                 float fade = clamp((lastSplit - eyeDepth) / max(cascadeCtl.y, 0.001), 0.0, 1.0);
-                float strength = (1.0 - lit) * fade * clamp(vFogTC, 0.0, 1.0); // dimmer in fog / far
+                float strength = (1.0 - lit) * fade * clamp(vFogTC, 0.0, 1.0); // dimmer in fog and at distance.
                 r0.rgb *= mix(1.0, shadowCtl.z, strength);
             }
         }
     }
 
     if (alphaRef.z > 0.5) {
-        // Alpha-to-coverage: sharpen alpha around the cutout threshold so the
-        // MSAA resolve grades sub-pixel cutout features (fence wire, foliage)
-        // instead of the hard test keeping or killing the whole pixel.
+        // alpha-to-coverage sharpens alpha around the cutout threshold so the
+        // MSAA resolve grades sub-pixel cutout features instead of making the hard
+        // test keep or kill the whole pixel.
         float cov = clamp((r0.a - alphaRef.x) / max(fwidth(r0.a), 1e-4) + 0.5, 0.0, 1.0);
         if (cov <= 0.0) discard;
         r0.a = cov;
@@ -323,7 +325,7 @@ void main() {
 }
 )";
 
-// PSDetail — detail texturing (two texture samples, detail blend)
+// psdetail: detail texturing with two texture samples and a detail blend.
 static const char s_psDetailGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
@@ -331,16 +333,16 @@ precision highp sampler2DArray;
 layout(std140) uniform PSConstants {
     vec4 fogColor;
     vec4 alphaRef;
-    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}
-    vec4 constColor; // c3: per-object IsColored tint (white = no-op)
+    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}.
+    vec4 constColor;  // c3: per-object IsColored tint; white is the identity.
     vec4 _pad4;
     vec4 _pad5;
     vec4 _pad6;
     vec4 rgbEyeCoef;
-    mat4 cascadeVP[4]; // c8-c23: per-cascade light view-projection
-    vec4 cascadeSplits;// c24: per-tier select distance (omni: radius; frustum: far eye-depth)
-    vec4 cascadeCtl;   // c25: {count, fadeRange, biasBase, omniCount}
-    vec4 camFwd;       // c26: camera forward (eye-depth = dot(vWorldRel, camFwd))
+    mat4 cascadeVP[4]; // c8-c23: per-cascade light view-projection.
+    vec4 cascadeSplits;// c24: select distance per tier; omni tiers use radius and frustum tiers use far eye-depth.
+    vec4 cascadeCtl;   // c25: {count, fadeRange, biasBase, omniCount}.
+    vec4 camFwd;       // c26: camera forward; eye-depth is dot(vWorldRel, camFwd).
 };
 
 uniform sampler2D tex0;
@@ -352,31 +354,32 @@ in vec2 vUV0;
 in vec2 vUV1;
 in float vFogTC;
 
-uniform sampler2DArray shadowMap; // unit 2 — cascade depth-map array (unused unless shadowCtl.x>0.5)
+uniform sampler2DArray shadowMap; // unit 2: cascade depth-map array, unused unless shadowCtl.x > 0.5.
 in vec3 vWorldRel;
 
 out vec4 fragColor;
 
 void main() {
-    // No gl_FragDepth — see PSNormal.
+    // no gl_FragDepth; see psnormal.
     vec4 t0 = texture(tex0, vUV0);
     vec4 t1 = texture(tex1, vUV1);
     vec4 r0 = vColor * t0;
-    r0 *= constColor; // per-object IsColored tint (opacity + fade); white = no-op
+    r0 *= constColor; // per-object IsColored tint for opacity and fade; white is the identity.
     r0.rgb *= t1.a * 2.0;
     r0 += vSpecColor;
 
     if (shadowCtl.x > 0.5) {
-        // Tiered shadow maps: the first omniCount tiers are camera-centred spheres
-        // (selected by 3D distance, so a caster in ANY direction around the player —
-        // including behind the camera — casts into view); the rest are frustum
-        // slices reaching the far view distance (selected by eye-depth). Pick the
-        // tightest matching tier, then advance to the first tier whose projection is
-        // in bounds (coverage fallthrough, so a too-tight near tier never drops the
-        // shadow). 3x3-PCF the layer, cross-fade to the next tier over a band, fade
-        // at the far edge, and dim by the fog factor so distant shadows aren't harsh.
-        // cascadeCtl = {count, fadeRange, biasBase, omniCount}; cascadeSplits =
-        // per-tier select distance (omni: sphere radius; frustum: far eye-depth).
+        // tiered shadow maps use camera-centred sphere tiers first and frustum
+        // tiers afterward.
+        // the sphere tiers are selected by 3d distance so casters behind the
+        // camera can still cast into view; frustum tiers are selected by eye-depth.
+        // pick the tightest matching tier, then fall through to the next tier if
+        // the projection is out of bounds so a too-tight near tier does not drop
+        // the shadow.
+        // apply 3x3 pcf, cross-fade to the next tier over a band, fade at the far
+        // edge, and dim by fog so distant shadows stay soft.
+        // cascadeCtl is {count, fadeRange, biasBase, omniCount}; cascadeSplits is
+        // the select distance per tier.
         int nC = int(cascadeCtl.x);
         int omniN = int(cascadeCtl.w);
         float eyeDepth = dot(vWorldRel, camFwd.xyz);
@@ -398,8 +401,8 @@ void main() {
             for (int p = 0; p < 4; ++p) {
                 int c = ci + p;
                 if (c >= nC) break;
-                // p0 = primary, p1 = blend partner; while nothing has covered yet a
-                // later p force-samples the next looser tier (coverage fallthrough).
+                // p0 is the primary tier and p1 is the blend partner; if nothing has
+                // covered yet, later p values force-sample the next looser tier.
                 float w = (p == 0) ? (1.0 - bw) : ((wSum <= 0.0) ? 1.0 : ((p == 1) ? bw : 0.0));
                 if (w <= 0.0) continue;
                 vec4 cp = cascadeVP[c] * vec4(vWorldRel, 1.0);
@@ -419,16 +422,16 @@ void main() {
                 float lit = litSum / wSum;
                 float lastSplit = cascadeSplits[nC - 1];
                 float fade = clamp((lastSplit - eyeDepth) / max(cascadeCtl.y, 0.001), 0.0, 1.0);
-                float strength = (1.0 - lit) * fade * clamp(vFogTC, 0.0, 1.0); // dimmer in fog / far
+                float strength = (1.0 - lit) * fade * clamp(vFogTC, 0.0, 1.0); // dimmer in fog and at distance.
                 r0.rgb *= mix(1.0, shadowCtl.z, strength);
             }
         }
     }
 
     if (alphaRef.z > 0.5) {
-        // Alpha-to-coverage: sharpen alpha around the cutout threshold so the
-        // MSAA resolve grades sub-pixel cutout features (fence wire, foliage)
-        // instead of the hard test keeping or killing the whole pixel.
+        // alpha-to-coverage sharpens alpha around the cutout threshold so the
+        // MSAA resolve grades sub-pixel cutout features instead of making the hard
+        // test keep or kill the whole pixel.
         float cov = clamp((r0.a - alphaRef.x) / max(fwidth(r0.a), 1e-4) + 0.5, 0.0, 1.0);
         if (cov <= 0.0) discard;
         r0.a = cov;
@@ -443,7 +446,7 @@ void main() {
 }
 )";
 
-// PSGrass — grass blending with alpha from coefficients
+// psgrass: grass blending with alpha from coefficients.
 static const char s_psGrassGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
@@ -451,16 +454,16 @@ precision highp sampler2DArray;
 layout(std140) uniform PSConstants {
     vec4 fogColor;
     vec4 alphaRef;
-    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}
-    vec4 constColor; // c3: per-object IsColored tint (white = no-op)
+    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}.
+    vec4 constColor;  // c3: per-object IsColored tint; white is the identity.
     vec4 _pad4;
     vec4 grassCoef1;
     vec4 grassCoef2;
     vec4 _pad7;
-    mat4 cascadeVP[4]; // c8-c23: per-cascade light view-projection
-    vec4 cascadeSplits;// c24: per-tier select distance (omni: radius; frustum: far eye-depth)
-    vec4 cascadeCtl;   // c25: {count, fadeRange, biasBase, omniCount}
-    vec4 camFwd;       // c26: camera forward (eye-depth = dot(vWorldRel, camFwd))
+    mat4 cascadeVP[4]; // c8-c23: per-cascade light view-projection.
+    vec4 cascadeSplits;// c24: per-tier select distance (omni: radius; frustum: far eye-depth).
+    vec4 cascadeCtl;   // c25: {count, fadeRange, biasBase, omniCount}.
+    vec4 camFwd;       // c26: camera forward (eye-depth = dot(vWorldRel, camFwd)).
 };
 
 uniform sampler2D tex0;
@@ -472,13 +475,13 @@ in vec2 vUV0;
 in vec2 vUV1;
 in float vFogTC;
 
-uniform sampler2DArray shadowMap; // unit 2 — cascade depth-map array (unused unless shadowCtl.x>0.5)
+uniform sampler2DArray shadowMap; // unit 2: cascade depth-map array, unused unless shadowCtl.x > 0.5.
 in vec3 vWorldRel;
 
 out vec4 fragColor;
 
 void main() {
-    // No gl_FragDepth — see PSNormal.
+    // no gl_FragDepth; see psnormal.
     vec4 t0 = texture(tex0, vUV0);
     vec4 t1 = texture(tex1, vUV1);
 
@@ -489,16 +492,17 @@ void main() {
     r0.a = clamp((grassCoef1.a * 2.0 - 1.0) + t1.a, 0.0, 1.0);
     r0.rgb = clamp(r0.rgb * t1.rgb * 2.0, 0.0, 1.0);
     if (shadowCtl.x > 0.5) {
-        // Tiered shadow maps: the first omniCount tiers are camera-centred spheres
-        // (selected by 3D distance, so a caster in ANY direction around the player —
-        // including behind the camera — casts into view); the rest are frustum
-        // slices reaching the far view distance (selected by eye-depth). Pick the
-        // tightest matching tier, then advance to the first tier whose projection is
-        // in bounds (coverage fallthrough, so a too-tight near tier never drops the
-        // shadow). 3x3-PCF the layer, cross-fade to the next tier over a band, fade
-        // at the far edge, and dim by the fog factor so distant shadows aren't harsh.
-        // cascadeCtl = {count, fadeRange, biasBase, omniCount}; cascadeSplits =
-        // per-tier select distance (omni: sphere radius; frustum: far eye-depth).
+        // tiered shadow maps use camera-centred sphere tiers first and frustum
+        // tiers afterward.
+        // the sphere tiers are selected by 3d distance so casters behind the
+        // camera can still cast into view; frustum tiers are selected by eye-depth.
+        // pick the tightest matching tier, then fall through to the next tier if
+        // the projection is out of bounds so a too-tight near tier does not drop
+        // the shadow.
+        // apply 3x3 pcf, cross-fade to the next tier over a band, fade at the far
+        // edge, and dim by fog so distant shadows stay soft.
+        // cascadeCtl is {count, fadeRange, biasBase, omniCount}; cascadeSplits is
+        // the select distance per tier.
         int nC = int(cascadeCtl.x);
         int omniN = int(cascadeCtl.w);
         float eyeDepth = dot(vWorldRel, camFwd.xyz);
@@ -520,8 +524,8 @@ void main() {
             for (int p = 0; p < 4; ++p) {
                 int c = ci + p;
                 if (c >= nC) break;
-                // p0 = primary, p1 = blend partner; while nothing has covered yet a
-                // later p force-samples the next looser tier (coverage fallthrough).
+                // p0 is the primary tier and p1 is the blend partner; if nothing has
+                // covered yet, later p values force-sample the next looser tier.
                 float w = (p == 0) ? (1.0 - bw) : ((wSum <= 0.0) ? 1.0 : ((p == 1) ? bw : 0.0));
                 if (w <= 0.0) continue;
                 vec4 cp = cascadeVP[c] * vec4(vWorldRel, 1.0);
@@ -541,7 +545,7 @@ void main() {
                 float lit = litSum / wSum;
                 float lastSplit = cascadeSplits[nC - 1];
                 float fade = clamp((lastSplit - eyeDepth) / max(cascadeCtl.y, 0.001), 0.0, 1.0);
-                float strength = (1.0 - lit) * fade * clamp(vFogTC, 0.0, 1.0); // dimmer in fog / far
+                float strength = (1.0 - lit) * fade * clamp(vFogTC, 0.0, 1.0); // dimmer in fog and at distance.
                 r0.rgb *= mix(1.0, shadowCtl.z, strength);
             }
         }
@@ -549,7 +553,7 @@ void main() {
     r0.a = clamp(grassCoef2.a * r0.a * 2.0, 0.0, 1.0);
 
     if (alphaRef.z > 0.5) {
-        // Alpha-to-coverage: sharpen alpha around the cutout threshold so the
+        // alpha-to-coverage sharpens alpha around the cutout threshold so the
         // MSAA resolve grades sub-pixel cutout features (fence wire, foliage)
         // instead of the hard test keeping or killing the whole pixel.
         float cov = clamp((r0.a - alphaRef.x) / max(fwidth(r0.a), 1e-4) + 0.5, 0.0, 1.0);
@@ -562,16 +566,16 @@ void main() {
 }
 )";
 
-// PSWater — bump-mapped water with specular from light direction
+// pswater: bump-mapped water with specular from the light direction.
 static const char s_psWaterGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 layout(std140) uniform PSConstants {
     vec4 fogColor;
-    vec4 alphaRef;    // c1: shared slot; water reads only .w (flatDebug)
-    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}
-    vec4 constColor;  // c3: per-object IsColored tint (unused by water)
+    vec4 alphaRef;    // c1: shared slot; water reads only .w (flatDebug).
+    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}.
+    vec4 constColor;  // c3: per-object IsColored tint; water does not use it.
     vec4 lightDir;
     vec4 grassCoef1;
     vec4 grassCoef2;
@@ -587,7 +591,7 @@ in vec2 vUV0;
 in vec2 vUV1;
 in float vFogTC;
 
-uniform sampler2DArray shadowMap; // unit 2 — cascade depth-map array (unused unless shadowCtl.x>0.5)
+uniform sampler2DArray shadowMap; // unit 2: cascade depth-map array, unused unless shadowCtl.x > 0.5.
 in vec3 vWorldRel;
 
 out vec4 fragColor;
@@ -604,28 +608,30 @@ void main() {
 }
 )";
 
-// VSShadow — minimal transform for shadow draws.  No lighting, no specular,
-// no fog calculation.  Vertex colour is sourced directly from material.diffuse
-// (matches DX8 with-D3DRS_LIGHTING-FALSE behaviour for shadows).  vUV0 carries
-// the cutout texture coords so PSShadow can alpha-test through leaf gaps.
+// vsshadow: minimal transform for shadow draws.
+// no lighting, no specular, and no fog calculation.
+// vertex color comes directly from material.diffuse, matching the DX8
+// D3DRS_LIGHTING=false shadow behavior.
+// vUV0 carries the cutout texture coordinates so psshadow can alpha-test
+// through leaf gaps.
 static const char s_vsShadowGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 layout(std140) uniform VSConstants {
-    mat4 proj;          // c0-c3
-    mat4 view;          // c4-c7
-    mat4 world;         // c8-c11
-    vec4 sunDir;        // c12
-    vec4 ambient;       // c13
-    vec4 diffuse;       // c14
-    vec4 emissive;      // c15
-    vec4 fogParam;      // c16
-    vec4 camPos;        // c17
-    vec4 specular;      // c18
-    vec4 specEn;        // c19
-    vec4 sunEn;         // c20
-    vec4 vpScale;       // c21 — VSScreen only, declared for layout parity
+    mat4 proj;          // c0-c3.
+    mat4 view;          // c4-c7.
+    mat4 world;         // c8-c11.
+    vec4 sunDir;        // c12.
+    vec4 ambient;       // c13.
+    vec4 diffuse;       // c14.
+    vec4 emissive;      // c15.
+    vec4 fogParam;      // c16.
+    vec4 camPos;        // c17.
+    vec4 specular;      // c18.
+    vec4 specEn;        // c19.
+    vec4 sunEn;         // c20.
+    vec4 vpScale;       // c21 - VSScreen only, declared for layout parity.
     vec4 _pad22;
     vec4 _pad23;
     mat4 texMat0;       // c24-c27
@@ -633,9 +639,9 @@ layout(std140) uniform VSConstants {
     vec4 texCtrl;       // c32
 };
 
-// Per-instance world matrices (perf effort 08). Plain glDrawElements has
-// gl_InstanceID == 0, so slot 0 carries the classic single world matrix
-// and non-instanced draws are unchanged.
+// per-instance world matrices (perf effort 08).
+// plain glDrawElements has gl_InstanceID == 0, so slot 0 carries the classic
+// single world matrix and non-instanced draws are unchanged.
 layout(std140) uniform WorldInstances {
     mat4 worldArr[256];
 };
@@ -654,26 +660,26 @@ out vec3 vWorldRel;
 void main() {
     vec4 worldPos = worldArr[gl_InstanceID] * vec4(pos, 1.0);
     gl_Position   = proj * view * worldPos;
-    vColor        = diffuse;        // unlit — direct from material.diffuse
+    vColor        = diffuse;        // unlit: direct from material.diffuse.
     vSpecColor    = vec4(0.0);
     vUV0          = (texCtrl.x > 0.5) ? (texMat0 * vec4(uv, 0, 1)).xy : uv;
     vUV1          = vUV0;
-    vFogTC        = 1.0;            // shadows ignore fog (DX8 D3DRS_FOGENABLE=FALSE)
-    vWorldRel     = vec3(0.0);     // shadow casters aren't shadow-mapped receivers
+    vFogTC        = 1.0;            // shadows ignore fog (DX8 D3DRS_FOGENABLE=FALSE).
+    vWorldRel     = vec3(0.0);      // shadow casters are not shadow-mapped receivers.
 }
 )";
 
-// PSShadow — alpha-cutout discard, output constant black + vColor.a,
-// for the per-poly shadow blend path.
+// psshadow: alpha-cutout discard and constant black output with vColor.a for
+// the per-poly shadow blend path.
 static const char s_psShadowGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 layout(std140) uniform PSConstants {
     vec4 fogColor;
-    vec4 alphaRef;      // {ref, enabled, 0, 0}
-    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}
-    vec4 constColor; // c3: per-object IsColored tint (white = no-op)
+    vec4 alphaRef;    // {ref, enabled, 0, 0}.
+    vec4 shadowCtl;   // c2: {enable, bias, darkness, texelSize}.
+    vec4 constColor;  // c3: per-object IsColored tint; white is the identity.
     vec4 _pad4;
     vec4 _pad5;
     vec4 _pad6;
@@ -685,20 +691,19 @@ uniform sampler2D tex0;
 in vec4 vColor;
 in vec2 vUV0;
 
-uniform sampler2DArray shadowMap; // unit 2 — cascade depth-map array (unused unless shadowCtl.x>0.5)
+uniform sampler2DArray shadowMap; // unit 2: cascade depth-map array, unused unless shadowCtl.x > 0.5.
 in vec3 vWorldRel;
 
 out vec4 fragColor;
 
 void main() {
-    // Force late tests via gl_FragDepth — KEPT even with Phase 3's
-    // REPLACE 0xFF stencil.  Reason: REPLACE is idempotent across
-    // overlapping shadow casters, but NOT across alpha-cutout discard.
-    // If early-Z let stencil REPLACE 0xFF fire before the FS discard,
-    // foliage leaf gaps would phantom-stamp the stencil mask, and
-    // EndShadowPass's fullscreen darken would shadow those gaps.
-    // Forcing late tests via gl_FragDepth makes discard properly
-    // suppress the stencil write.
+    // force late tests via gl_FragDepth even with the phase 3 replace-0xff
+    // stencil path.
+    // replace is idempotent across overlapping shadow casters, but not across
+    // alpha-cutout discard.
+    // if early-z lets the stencil write happen before the fragment discard,
+    // foliage gaps would stamp the mask and EndShadowPass would darken them.
+    // forcing late tests makes discard suppress the stencil write.
     gl_FragDepth = gl_FragCoord.z;
 
     float a = vColor.a * texture(tex0, vUV0).a;
@@ -708,13 +713,13 @@ void main() {
 }
 )";
 
-// PSFlat — vertex color passthrough (no texture)
+// psflat: vertex-color passthrough with no texture.
 static const char s_psFlatGLSL[] = R"(#version 320 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 in vec4 vColor;
-uniform sampler2DArray shadowMap; // unit 2 — cascade depth-map array (unused unless shadowCtl.x>0.5)
+uniform sampler2DArray shadowMap; // unit 2: cascade depth-map array, unused unless shadowCtl.x > 0.5.
 in vec3 vWorldRel;
 
 out vec4 fragColor;
@@ -724,10 +729,10 @@ void main() {
 }
 )";
 
-// Optional override directory for hot-reload.  Set via --shader-override-dir.
-// When set, CompileGLShader looks for `<dir>/<name>.glsl` and prefers its
-// contents over the inline `source` argument.  Empty / not-set = use inline
-// source as the only path (release behaviour).
+// optional override directory for hot reload, set via --shader-override-dir.
+// when set, CompileGLShader looks for <dir>/<name>.glsl and prefers its
+// contents over the inline source argument.
+// empty or unset means the inline source is the only path.
 static std::string s_shaderOverrideDir;
 
 void SetShaderOverrideDir(const std::string& dir)
@@ -737,8 +742,8 @@ void SetShaderOverrideDir(const std::string& dir)
         LOG_INFO(Graphics, "GLES32: shader override dir = '{}'", dir);
 }
 
-// Returns true if an override file was loaded (out=its contents).
-// Returns false on any miss / read failure (out untouched).
+// returns true if an override file was loaded and writes its contents to out.
+// returns false on any miss or read failure, leaving out untouched.
 static bool TryLoadShaderOverride(const char* name, std::string& out)
 {
     if (s_shaderOverrideDir.empty())
@@ -798,8 +803,8 @@ static GLuint LinkGLProgram(GLuint vs, GLuint fs, const char* name)
     return program;
 }
 
-static float s_vsShadow[280] = {}; // 70 vec4 slots — through SlotLightVP (c66-c69)
-static float s_psShadow[108] = {}; // 27 vec4 slots — c8-c23 cascadeVP[4], c24 splits, c25 ctl, c26 camFwd
+static float s_vsShadow[280] = {}; // 70 vec4 slots through SlotLightVP (c66-c69).
+static float s_psShadow[108] = {}; // 27 vec4 slots: c8-c23 cascadeVP[4], c24 splits, c25 ctl, c26 camFwd.
 
 static GLuint s_vsUBO = 0;
 static GLuint s_worldUBO = 0;
@@ -809,8 +814,8 @@ void EngineGLES32::FlushVSConstants()
 {
     if (!s_vsUBO)
         return;
-    // glBindBufferBase is sticky — done once at UBO creation in
-    // InitVertexShaders.  Per-flush we only update buffer contents.
+    // glBindBufferBase is sticky and is done once at UBO creation in
+    // InitVertexShaders. per flush, only the buffer contents change.
     glBindBuffer(GL_UNIFORM_BUFFER, s_vsUBO);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(s_vsShadow), nullptr, GL_DYNAMIC_DRAW);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(s_vsShadow), s_vsShadow);
@@ -820,12 +825,10 @@ void EngineGLES32::FlushPSConstants()
 {
     if (!s_psUBO)
         return;
-    // EmitDraw flushes per draw call but PS-side constants rarely change
-    // between draws of the same section run — skip the 432-byte upload when
-    // the shadow copy matches what the current UBO already holds (a memcmp is
-    // ~50 ns vs a glBufferSubData with implicit-sync risk on an in-use buffer).
-    // Alt+Enter/reset recreates s_psUBO; the new buffer starts empty even when
-    // the CPU shadow copy has not changed, so the cache must be keyed by UBO id.
+    // EmitDraw flushes per draw call, but PS-side constants rarely change between
+    // draws of the same section run.
+    // skip the upload when the CPU shadow copy still matches the current UBO.
+    // alt+enter and reset recreate s_psUBO, so the cache must be keyed by UBO id.
     static float s_psUploaded[sizeof(s_psShadow) / sizeof(float)] = {};
     static bool s_psEverUploaded = false;
     static GLuint s_psUploadedUBO = 0;
@@ -1323,32 +1326,31 @@ void EngineGLES32::UploadObjectConstants(const DrawItem& item)
     UploadVSWorldMatrix(reinterpret_cast<const float*>(&item.worldMatrix));
 }
 
-// Compiled FS objects
+// compiled FS objects
 static GLuint s_fsObjects[NPixelShaders] = {};
 
-// Shader binary cache (ARB_get_program_binary).
+// shader binary cache using arb_get_program_binary.
 //
-// glLinkProgram for the 2*2*2*5 = 40 pipeline-state programs costs ~100ms+
-// of cold start time on a typical desktop driver.  GL 4.1 / ARB_get_program
-// _binary lets us pull the linked program back as a driver-specific blob
-// and feed it into glProgramBinary on the next launch — saving the link
-// pass entirely when the GPU + driver match the cached blob.
+// linked shader programs are serialized after a successful build and
+// restored with glProgramBinary on subsequent launches. this avoids
+// recompiling and relinking the full pipeline when the cached binaries
+// remain compatible with the current driver and shader sources.
 //
-// File format (little-endian, packed):
-//   u32 magic 'SHCH'
+// cache file layout (little-endian):
+//   u32 magic ('SHCH')
 //   u32 version
-//   u64 source_hash (FNV-1a over all GLSL source bodies)
-//   u32 n_programs
+//   u64 source_hash (fnv-1a over all glsl source)
+//   u32 program_count
 //   per program:
 //     u32 key (v<<24 | s<<16 | m<<8 | i)
-//     u32 binaryFormat
-//     u32 blobSize
-//     u8[blobSize] blob
+//     u32 binary_format
+//     u32 binary_size
+//     u8[binary_size] binary
 //
-// Mismatched source hash, magic, or version invalidates the whole file.
-// A driver/GPU change produces a wrong binary blob; glProgramBinary then
-// fails per-entry and we transparently fall back to compile-from-source
-// for that slot, then rewrite the cache.
+// the cache is invalidated if the magic, version, or source hash does
+// not match. driver or gpu changes are handled per program: failed
+// glProgramBinary restores trigger a compile-from-source fallback, and
+// the cache is regenerated with the new binaries.
 
 namespace
 {

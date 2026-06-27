@@ -1,10 +1,12 @@
 // redundant bind elimination for the gles32 backend.
-// same logic as the gl33 bind cache but in its own namespace so both
-// backends can coexist in the same link unit without odr conflicts.
-// 
-// every glbindvertexarray and glbindtexture(gl_texture_2d) in this backend
-// goes through these helpers. anything that touches bind state outside
-// them (context reset, external overlay) must call invalidate().
+//
+// the implementation mirrors the gl33 cache, but it lives in a separate
+// namespace so both backends can be linked into the same binary without odr
+// conflicts.
+//
+// all vao and 2d texture binds in this backend route through these helpers.
+// any code that mutates bind state behind the cache's back must call
+// invalidate() before the next draw.
 
 #pragma once
 
@@ -14,7 +16,7 @@ namespace GLES32Bind
 {
 
 void Vao(unsigned int vao);
-void Tex2D(int unit, unsigned int tex); // leaves the active unit on `unit`
+void Tex2D(int unit, unsigned int tex); // keeps the active texture unit on unit.
 void ActiveUnit(int unit);
 void OnVaoDeleted(unsigned int vao);
 void OnTexDeleted(unsigned int tex);

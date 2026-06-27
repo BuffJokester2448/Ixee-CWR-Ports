@@ -53,7 +53,7 @@ TextBankGLES32::TextBankGLES32(EngineGLES32* engine) : _totalAllocated(0)
 
     _maxTextureMemory = FreeTextureMemory();
 
-    // Small texture limit: use ~1/8 of texture memory for small textures
+    // small texture limit: reserve about one eighth of texture memory for small textures.
     int limitPixels = _limitAllocatedTextures / (2 * 1024 * 8);
     int limitPixelsPow2 = 1;
     while (limitPixelsPow2 + limitPixelsPow2 < limitPixels)
@@ -66,9 +66,10 @@ TextBankGLES32::TextBankGLES32(EngineGLES32* engine) : _totalAllocated(0)
     LOG_DEBUG(Graphics, "GL33 Max small texture pixels: {}, {:.0f}", _maxSmallTexturePixels,
               sqrt(_maxSmallTexturePixels));
 
-    // Surface texture residency in the memory-budget panel. Textures are the
-    // largest consumer; _totalAllocated is live GPU bytes, _maxTextureMemory the
-    // detected VRAM budget. Observability only — no Free hook (see header).
+    // surface texture residency in the memory-budget panel.
+    // textures are the largest consumer; _totalAllocated is live gpu bytes and
+    // _maxTextureMemory is the detected vram budget.
+    // observability only; there is no Free hook.
     _memProbe.Register(
         "Textures", 0.5f, [this] { return (size_t)_totalAllocated; }, [this] { return (size_t)_maxTextureMemory; },
         [this] { return (size_t)_texture.Size(); });
@@ -194,27 +195,26 @@ Ref<Texture> TextBankGLES32::Load(RStringB name)
     if (i >= 0)
         return _texture[i].GetLink();
 
-    // Cache-miss texture load triggers PAA/PAC decode and a sequence of
-    // per-mip GL uploads — one of the top-three first-touch hitch sources.
-    // Scoped per-call so the recursive load chain a model triggers shows up
-    // as a stack of PERF lines, one per texture.  See
+    // cache-miss texture loads trigger PAA/PAC decode and a sequence of per-mip
+    // gl uploads, which is one of the largest first-touch hitch sources.
+    // the scope is per call so the recursive load chain a model triggers shows
+    // up as a stack of PERF lines, one per texture.
     const auto _perfTexLoadStart = ::Poseidon::Dev::Perf::Now();
 
     int iFree = _texture.Size();
 
-    // Check existence against the loose-resolved path so a p3d-referenced
-    // .pac that has a .png/.tga/.jpg sibling on disk still loads.
+    // check existence against the loose-resolved path so a p3d-referenced pac
+    // still loads when a png, tga, or jpg sibling exists on disk.
     RString resolved = Poseidon::Graphics::ResolveLooseTexturePath(name);
     if (!QIFStreamB::FileExist(resolved))
     {
-        // A genuinely missing texture file is silently replaced by the default
-        // (placeholder) texture in the caller, so a broken/incomplete asset set
-        // is invisible at runtime. Surface it at WARN so it shows up in logs.
-        // Not ERROR: dangling texture refs are endemic in the original data
-        // (e.g. data\oblacno.pac, o\guns\beretta_bmp.pac) and the engine has
-        // always tolerated them with the default texture; promoting them to a
-        // --strict abort kills the stock game/viewer on its own assets.
-        // Procedural names (#...) have no backing file and are not asset errors.
+        // a missing texture is replaced by the default placeholder in the caller,
+        // so a broken or incomplete asset set would otherwise be invisible.
+        // surface it as WARN so it shows up in logs.
+        // do not promote this to ERROR: dangling references are common in the
+        // original data and the engine has always tolerated them with the default
+        // texture.
+        // procedural names (#...) have no backing file and are not asset errors.
         const char* cname = static_cast<const char*>(name);
         if (cname && cname[0] && cname[0] != '#')
             LOG_WARN(Graphics, "GLES32: Cannot load texture {}", cname);
@@ -399,10 +399,9 @@ void TextBankGLES32::AddReleased(SurfaceInfoGLES32& surf)
 
 void TextBankGLES32::UseReleased(SurfaceInfoGLES32& surf, const TextureDescGLES32& desc, PacFormat format)
 {
-    // reusing immutable textures via glTexSubImage2D
-    // causes Adreno drivers to hit "Too much alias space, unable to rename"
-    // and fallback to a slow path, tanking FPS. let the driver manage
-    // allocation/freeing of texture IDs.
+    // reusing immutable textures via glTexSubImage2D can trigger the Adreno
+    // "Too much alias space, unable to rename" slow path.
+    // let the driver manage allocation and freeing of texture ids.
     return;
 }
 

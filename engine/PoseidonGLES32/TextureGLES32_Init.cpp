@@ -117,8 +117,8 @@ void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableD
 
 #ifdef __ANDROID__
     // gles does not support GL_BGRA or _REV packed pixel types.
-    // all ARGB formats get uploaded as GL_RGBA + GL_UNSIGNED_BYTE
-    // after a cpu byte swap in the upload path.
+    // ARGB formats are uploaded as GL_RGBA + GL_UNSIGNED_BYTE after a cpu
+    // byte swap in the upload path.
     switch (format)
     {
         case PacARGB1555:
@@ -369,13 +369,12 @@ Color TextureGLES32::GetPixel(int level, float u, float v) const
     return col;
 }
 
-// Decode the top (full-resolution) mip once and classify its alpha channel.
-// Reads the texture's bytes through the VFS (so it works for PBO-packed textures) and
-// decodes via the shared DecodePAABuffer, which handles every PAA/PAC pixel format
-// (DXT1/3/5, ARGB8888/4444/1555, AI88, P8) — unlike PacLevelMem::GetPixelInt, which
-// only covers a subset and would Fail per texel on the rest. Top mip on purpose: a
-// smaller mip blurs a cutout's crisp 0/255 holes into false partial-alpha, which would
-// mis-route a pole/fence to the blend pass.
+// decode the top mip once and classify its alpha channel.
+// the bytes are read through the VFS so PBO-packed textures work, then decoded
+// through DecodePAABuffer, which handles every PAA/PAC pixel format the loader
+// supports.
+// the top mip is intentional: a smaller mip would blur crisp cutout holes into
+// false partial alpha and route a pole or fence to the blend pass.
 Poseidon::AlphaStats::Kind TextureGLES32::ScanTopMipAlphaClass()
 {
     LoadHeadersNV();
@@ -395,7 +394,7 @@ Poseidon::AlphaStats::Kind TextureGLES32::ScanTopMipAlphaClass()
 
     const char* name = Name();
     const size_t len = name ? strlen(name) : 0;
-    const bool isPaa = len >= 4 && (name[len - 1] == 'a' || name[len - 1] == 'A'); // .paa vs .pac
+    const bool isPaa = len >= 4 && (name[len - 1] == 'a' || name[len - 1] == 'A'); // .paa vs .pac.
 
     const Poseidon::DecodedImage img = Poseidon::DecodePAABuffer(fileData.Data(), static_cast<size_t>(size), isPaa);
     if (!img.valid())
@@ -416,8 +415,8 @@ Poseidon::AlphaStats::Kind TextureGLES32::GetAlphaClass()
     {
         const bool hasAlpha = _src->IsAlpha();
         const bool chroma = _src->IsTransparent();
-        const bool oneBit = _src->GetFormat() == PacDXT1; // 1-bit alpha: punch-through only
-        // Only multi-bit-alpha formats need the (cached) decode to tell cutout from blend.
+        const bool oneBit = _src->GetFormat() == PacDXT1; // 1-bit alpha: punch-through only.
+        // only multi-bit-alpha formats need the cached decode to separate cutout from blend.
         Poseidon::AlphaStats decoded;
         const Poseidon::AlphaStats* decodedPtr = nullptr;
         if (hasAlpha && !oneBit)
@@ -519,18 +518,16 @@ int SurfaceInfoGLES32::CreateSurface(const TextureDescGLES32& desc, PacFormat fo
         return -1;
     }
 
-    // All texture-storage and pixel-upload calls go via the dedicated upload
-    // unit so unit 0/1's engine-tracked binding stays accurate — see
-    // EngineGLES32.hpp / kUploadUnit.
+    // all texture-storage and pixel-upload calls go through the dedicated upload
+    // unit so the engine-tracked bindings for units 0 and 1 stay accurate.
     GLES32Bind::Tex2D(EngineGLES32::kUploadUnit - GL_TEXTURE0, _texture);
 
-    // Allocate immutable storage for all mipmap levels in a single call.
-    // glTexStorage2D is core in GL 4.2 (and via ARB_texture_storage in GL 3.3
-    // — required by our context).  It allocates all mip levels at once,
-    // makes the format immutable (no driver re-validation per upload), and
-    // reports allocation failure once instead of per-mip.  Subsequent
-    // pixel uploads use glTex(Compressed)SubImage2D in the loader.
-    // clear any pending GL errors so we only catch glTexStorage2D errors
+    // allocate immutable storage for all mipmap levels in a single call.
+    // glTexStorage2D is core in GL 4.2 and available through ARB_texture_storage
+    // in GL 3.3. it allocates every mip level at once, makes the format
+    // immutable, and reports allocation failure once instead of per mip.
+    // subsequent pixel uploads use glTex(Compressed)SubImage2D in the loader.
+    // clear any pending gl errors so only the glTexStorage2D failure is seen.
     while (glGetError() != GL_NO_ERROR) {}
     glTexStorage2D(GL_TEXTURE_2D, desc.nMipmaps, desc.internalFormat, desc.w, desc.h);
     GLenum allocErr = glGetError();
@@ -543,15 +540,15 @@ int SurfaceInfoGLES32::CreateSurface(const TextureDescGLES32& desc, PacFormat fo
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, desc.nMipmaps - 1);
 
-    // Default filter: linear min/mag, nearest mip (matches D3D11 MIN_MAG_LINEAR_MIP_POINT)
+    // default filter: linear min/mag, nearest mip.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-    // PacAI88 (Alpha-Intensity) → GL_RG8: D3D A8L8 samples as (L,L,L,A)
-    // GL RG8 samples as (R,G,0,1) where R=luminance, G=alpha
-    // Set swizzle to replicate D3D behavior
+    // PacAI88 maps to GL_RG8.
+    // D3D A8L8 samples as (L,L,L,A), while GL RG8 samples as (R,G,0,1), so set
+    // swizzle to replicate the D3D behavior.
     if (format == PacAI88)
     {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_RED);
@@ -560,8 +557,8 @@ int SurfaceInfoGLES32::CreateSurface(const TextureDescGLES32& desc, PacFormat fo
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_GREEN);
     }
 
-    // Restore the engine's normal active unit; the upload-unit binding
-    // persists harmlessly (no shader samples from it).
+    // restore the engine's normal active unit; the upload-unit binding persists
+    // harmlessly because no shader samples from it.
     GLES32Bind::ActiveUnit(0);
 
     return 0;
@@ -621,8 +618,8 @@ bool TextureGLES32::InitFromRGBA(int w, int h, const void* rgba, uint32_t size, 
     {
         glGenerateMipmap(GL_TEXTURE_2D);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        // Anisotropic filter keeps tilted-surface sampling crisp — isotropic LOD
-        // over-blurs because the per-fragment UV footprint is elongated.
+        // anisotropic filtering keeps tilted-surface sampling crisp; isotropic
+        // lod over-blurs because the per-fragment uv footprint is elongated.
         float maxAniso = 1.0f;
         glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
         if (maxAniso > 1.0f)
@@ -646,7 +643,7 @@ bool TextureGLES32::InitFromRGBA(int w, int h, const void* rgba, uint32_t size, 
     _surface._totalSize = w * h * 4;
     _surface._usedSize = w * h * 4;
 
-    // Mark as fully loaded so UseMipmap won't attempt demand-loading
+    // mark as fully loaded so UseMipmap will not attempt demand-loading.
     _levelLoaded = 0;
     _smallLoaded = 0;
     _largestUsed = 0;

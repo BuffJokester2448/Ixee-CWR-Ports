@@ -15,18 +15,17 @@ using namespace Poseidon::Dev;
 
 namespace
 {
-// Lifetime-of-process counter of HIGH-severity GL errors (driver
-// validation failures).  the frame layer's ValidateFrame consumes this via the
-// Engine::GetDebugErrorCount() virtual to enforce I-20 (no
-// GL_INVALID_* during a frame).  Static-not-atomic — the callback
-// fires on the GL thread only.
+// process-wide counter of high-severity gl errors.
+// the frame layer reads this through Engine::GetDebugErrorCount() to enforce
+// I-20, which forbids GL_INVALID_* during a frame.
+// the callback runs on the gl thread only, so the counter does not need
+// atomic synchronization.
 unsigned int s_glHighSeverityErrorCount = 0;
 
-// Most recent HIGH-severity GL_DEBUG message.  Captured by the
-// callback below and surfaced via `EngineGLES32::GetLastDebugMessage`
-// so the frame layer's I-20 violation detail says *what* the error was, not just
-// that one fired.  Static-not-atomic for the same single-thread
-// reason as the counter.
+// most recent high-severity gl_debug message.
+// surfaced through EngineGLES32::GetLastDebugMessage() so I-20 reports carry
+// the actual error text, not just the fact that one occurred.
+// this shares the same single-thread assumption as the counter above.
 std::string s_glLastHighSeverityMessage;
 } // namespace
 
@@ -43,23 +42,20 @@ std::string EngineGLES32::GetLastDebugMessage() const
 namespace
 {
 
-// Per-error GL debug callback (KHR_debug / GL 4.3+ — universally
-// available on modern desktop GL).  Wired in all builds: NDEBUG
-// (Release) covers production, but the project's day-to-day build is
-// RelWithDebInfo where NDEBUG is also defined; gating on _DEBUG would
-// hide the callback from dev builds where it's most valuable.  Synchronous
-// callback overhead is negligible vs the diagnostic value of seeing the
-// exact call site that produced each GL error.  Severity maps to log
-// level so the runtime channel filter decides what reaches the console.
+// per-error gl debug callback (KHR_debug / GL 4.3+).
+// the callback is enabled in all builds because RelWithDebInfo also defines
+// NDEBUG, and that is the primary development configuration.
+// synchronous delivery is acceptable here because the error text is more
+// useful than the cost of reporting it.
+// severity maps to log level so the runtime channel filter controls console
+// output.
 //
-// Non-HIGH messages are deduplicated per `id`: every unique id logs
-// once at full severity, repeats only bump a counter.  GL drivers
-// emit the same MEDIUM/LOW notification thousands of times per frame
-// (NVIDIA's "buffer detailed info" stream alone hit ~1.9 M lines in a
-// 2-min capture), which otherwise drowns out the PERF / Audio stream
-// we run alongside it.  HIGH-severity errors are always logged in
-// full — the frame layer's I-20 gate counts them and the message text is needed
-// for the violation report.
+// non-high messages are deduplicated by id: the first sighting logs once at
+// full severity and later repeats only bump a counter.
+// many drivers emit the same medium or low notification repeatedly; without
+// deduplication that noise would bury the useful streams.
+// high-severity errors are always logged in full because I-20 counts them and
+// the violation report needs the message text.
 static std::mutex& GetGLDedupMtx() {
     static std::mutex* m = new std::mutex();
     return *m;
@@ -73,9 +69,9 @@ static std::unordered_map<GLuint, std::uint64_t>& GetGLDedupCounts() {
 void GLAPIENTRY GlDebugCallback(GLenum /*source*/, GLenum type, GLuint id, GLenum severity, GLsizei /*length*/,
                                 const GLchar* message, const void* /*userParam*/)
 {
-    // Suppress NVIDIA buffer-detail messages (id 131185 = "Buffer object
-    // <X> will use VIDEO memory as the source for buffer object operations")
-    // — chatty, not actionable.
+    // suppress nvidia buffer-detail messages (id 131185 = "Buffer object
+    // <X> will use VIDEO memory as the source for buffer object operations").
+    // they are verbose but not actionable.
     if (id == 131185)
     {
         return;
@@ -95,9 +91,9 @@ void GLAPIENTRY GlDebugCallback(GLenum /*source*/, GLenum type, GLuint id, GLenu
         return;
     }
 
-    // Non-HIGH: dedup by id.  First sighting logs at full severity;
-    // repeats bump a counter that EngineGLES32's dtor flushes as a
-    // summary line ("GL[MEDIUM id=N]: <msg> (suppressed K repeats)").
+    // non-high severity: deduplicate by id. the first sighting logs at full
+    // severity; repeats increment a counter that the destructor later flushes
+    // as a summary line.
     bool firstSighting = false;
     {
         std::lock_guard<std::mutex> lock(GetGLDedupMtx());
@@ -123,15 +119,13 @@ void GLAPIENTRY GlDebugCallback(GLenum /*source*/, GLenum type, GLuint id, GLenu
         LOG_DEBUG(Graphics, "GL[{} type=0x{:04X} id={}]: {}", sev, type, id, message);
     }
 
-    // Fail-fast in debug builds when a real GL API error fires.
-    // GL_DEBUG_TYPE_ERROR at HIGH severity = the driver caught a misuse
-    // (invalid enum, unbound program at draw, etc.).  Synchronous
-    // callback is already enabled, so the stack trace points at the
-    // exact GL call.  This catches state-machine bugs at the source
-    // instead of letting them produce silent rendering corruption.
+    // fail fast in debug builds when a real gl api error fires.
+    // high-severity GL_DEBUG_TYPE_ERROR means the driver caught a misuse such
+    // as an invalid enum or an unbound program at draw time. synchronous
+    // delivery already points the stack trace at the offending call, which
+    // catches state-machine bugs before they turn into silent corruption.
     //
-    // Release builds (incl. day-to-day RelWithDebInfo) log only — we
-    // want diagnostic visibility there, not crashes.
+    // release builds, including RelWithDebInfo, only log the error.
 #ifdef _DEBUG
     if (severity == GL_DEBUG_SEVERITY_HIGH && type == GL_DEBUG_TYPE_ERROR)
     {
@@ -273,31 +267,30 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     LOG_INFO(Graphics, "GLES32: Initializing engine — bootstrap {}x{} {}bpp {} before display.cfg/user overrides", _w,
              _h, _pixelSize, _windowed ? "windowed" : "fullscreen");
 
-    // SDL3 initialization
+    // sdl3 initialization.
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         LOG_ERROR(Graphics, "GLES32: SDL_Init failed: {}", SDL_GetError());
         return;
     }
 
-    // Request the correct GL context profile for the platform
+    // request the correct gl context profile for the platform.
 #ifdef __ANDROID__
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #else
-    // Request OpenGL 3.3 Core Profile
+    // request an OpenGL 3.3 core profile.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    // Forward-compatible flag is required by Apple's GL implementation
-    // for any 3.3 Core context; harmless on Win/Linux.  Debug flag opens
-    // GL_CONTEXT_FLAG_DEBUG_BIT so KHR_debug callbacks can fire — kept
-    // on in all builds because the day-to-day RelWithDebInfo build is
-    // what we develop against, and gating on _DEBUG would leave us without
-    // the per-error GL log there.
+    // the forward-compatible flag is required by Apple's gl implementation
+    // for any 3.3 core context and is harmless on Windows or Linux.
+    // the debug flag enables GL_CONTEXT_FLAG_DEBUG_BIT so KHR_debug callbacks
+    // can fire. it stays enabled in all builds because RelWithDebInfo is the
+    // main development configuration.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
 
@@ -305,26 +298,22 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
-    // The default framebuffer is single-sampled on purpose: every frame
-    // renders into the offscreen frame target (BindFrameRenderTarget), which
-    // carries the MSAA samples — 8x at render scale 1, 4x at SSAA scales —
-    // and resolves into the window with a blit.  A multisampled window
-    // framebuffer would make the scaled-resolve blit illegal
-    // (GL_INVALID_OPERATION: scaling blits need single-sampled targets) and
-    // glReadPixels on it is out-of-spec anyway.
+    // the default framebuffer stays single-sampled on purpose. every frame
+    // renders into the offscreen frame target, which carries the MSAA samples
+    // and resolves into the window with a blit.
+    // a multisampled window framebuffer would make the scaled resolve blit
+    // illegal and would also make glReadPixels out of spec.
 
-    // Resolve final placement (mode + size + position) from the engine
-    // config, the --window override, and the target display's desktop
-    // mode.  Borderless is forced to native desktop resolution at (0,0)
-    // so DWM (Win10 1903+) detects it and engages independent flip —
-    // without this, "borderless" produces a chromeless window the size
-    // of the configured w/h, defeating the whole point of the mode.
+    // resolve the final placement from the engine config, the --window
+    // override, and the target display's desktop mode.
+    // borderless is forced to native desktop resolution at (0,0) so DWM can
+    // recognize it and use independent flip.
     auto& engineCfg = GApp->GetConfig().GetEngineConfig();
     DisplayPlacementInput displayCfg;
     displayCfg.displayMode = engineCfg.displayMode;
-    // --window forces Windowed regardless of saved displayMode (dev /
-    // testing ergonomics).  appConfig already collapses --window into
-    // displayMode = "windowed" during arg parsing, but be defensive.
+    // --window forces windowed mode regardless of the saved display mode.
+    // appConfig already normalizes --window during argument parsing, but keep
+    // this path defensive.
 #ifdef __ANDROID__
     displayCfg.displayMode = "borderless";
 #else
@@ -355,21 +344,17 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     const WindowPlacement placement = ResolveWindowPlacement(displayCfg, desktopW, desktopH, desktopRefresh);
     _windowMode = placement.mode;
 
-    // On Windows, Borderless avoids SDL's fullscreen state machine
-    // because Win11 + OpenGL can promote that path to exclusive on the
-    // first SwapWindow (libsdl-org/SDL#12791).  On Linux/macOS we *do*
-    // want the compositor's real desktop-fullscreen state so shell
-    // work-area reservations (GNOME top bar, etc.) don't treat the game
-    // as a regular borderless window.
+    // on Windows, borderless avoids SDL's fullscreen state machine because
+    // Win11 and OpenGL can promote that path to exclusive on the first
+    // SwapWindow.
+    // on Linux and macOS we want the compositor's real desktop-fullscreen
+    // state so shell work-area reservations do not treat the game as a normal
+    // borderless window.
     //
-    // Windowed mode keeps the standard resizable bordered window.
-    // SDL_WINDOW_HIGH_PIXEL_DENSITY: opt into native-pixel rendering on
-    // HighDPI displays (Retina, Windows 200% scaling).  Without this
-    // flag SDL renders at *logical* pixels and blits up — content looks
-    // blurry.  The SDL_GetWindowSizeInPixels readback below already
-    // handles the size correctly; this flag makes the readback
-    // actually return higher-than-logical numbers when the display has
-    // a pixel density > 1.
+    // windowed mode keeps the standard resizable bordered window.
+    // SDL_WINDOW_HIGH_PIXEL_DENSITY opts into native-pixel rendering on
+    // high-dpi displays. without it, SDL renders at logical pixels and blits
+    // up, which makes the image blurry.
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     switch (placement.mode)
     {
@@ -410,7 +395,7 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     if (placement.refreshHz > 0)
         _refreshRate = placement.refreshHz;
 
-    // Create OpenGL context
+    // create the gl context.
     _glContext = SDL_GL_CreateContext(_sdlWindow);
     if (!_glContext)
     {
@@ -418,7 +403,7 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
         return;
     }
 
-    // Load OpenGL function pointers via GLAD
+    // load gl function pointers via glad.
     if (!gladLoadGLES2((GLADloadfunc)SDL_GL_GetProcAddress))
     {
         LOG_ERROR(Graphics, "GLES32: gladLoadGLES2 failed");
@@ -426,23 +411,21 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
         return;
     }
 
-    // VSync ON by default.  The options menu's GraphicsConfig::vsync
-    // setting can override this at runtime via SetSwapInterval /
-    // GetSwapInterval.
+    // vsync is enabled by default. the options menu can override it at
+    // runtime through SetSwapInterval() and GetSwapInterval().
     SDL_GL_SetSwapInterval(1);
 
-    // Initialize the ImGui debug overlay (font tuner + future panels).  Hidden
-    // by default — F8 toggles.  Must be called after GL context exists.
+    // initialize the imgui debug overlay. it stays hidden by default and F8
+    // toggles it. the GL context must already exist.
     DebugOverlay::Init(_sdlWindow, _glContext);
 
-    // MSAA lives on the offscreen frame target; _msaaActive (the
-    // alpha-to-coverage gate) is set when that target is created with
-    // multisample storage — see ApplyPendingRenderScale.
+    // msaa lives on the offscreen frame target; _msaaActive is set when that
+    // target is created with multisample storage. see ApplyPendingRenderScale.
 
-    // KHR_debug callback: turn raw GL errors into actionable per-call log
-    // lines instead of "stale GL error 0x0502" sweeps a function later.
-    // Synchronous output ensures the callback fires inside the call site
-    // that produced the error (LearnOpenGL recommendation).
+    // khr_debug callback: turn raw gl errors into actionable per-call log
+    // lines instead of stale error sweeps later.
+    // synchronous output ensures the callback fires inside the call site that
+    // produced the error.
     {
         GLint ctxFlags = 0;
         glGetIntegerv(GL_CONTEXT_FLAGS, &ctxFlags);
@@ -453,7 +436,7 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
             glDebugMessageCallback(GlDebugCallback, nullptr);
             glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
 #ifdef __ANDROID__
-            // silence extremely noisy Adreno performance warnings (Namespace collision, too much alias space)
+            // silence extremely noisy adreno performance warnings.
             glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_LOW, 0, nullptr, GL_FALSE);
             glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE);
 #endif
@@ -468,30 +451,31 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     }
 
 #ifdef __ANDROID__
-    // Use the actual SurfaceView / window placement dimensions to avoid size mismatches with the compositor.
-    // SDL_GetWindowSizeInPixels returns the safe-area size (excluding system bars) on startup, which
-    // mismatches the full-screen SurfaceView / EGL backing surface dimensions.
+    // use the actual SurfaceView or window-placement dimensions to avoid size
+    // mismatches with the compositor.
+    // SDL_GetWindowSizeInPixels can return the safe-area size on startup, which
+    // does not always match the full-screen SurfaceView or EGL backing surface.
     _w = placement.width;
     _h = placement.height;
 #else
-    // Query actual pixel dimensions
+    // query the actual pixel dimensions.
     int cw = 0, ch = 0;
     SDL_GetWindowSizeInPixels(_sdlWindow, &cw, &ch);
     _w = cw;
     _h = ch;
 #endif
 
-    // Vendor + renderer make hybrid-GPU support reports self-diagnosing — they
-    // show which GPU Windows/Optimus actually handed the process.
+    // vendor and renderer make hybrid-gpu reports self-diagnosing because they
+    // show which GPU the platform actually handed the process.
     LOG_INFO(Graphics, "GLES32: OpenGL {} — {} — {}", (const char*)glGetString(GL_VERSION),
              (const char*)glGetString(GL_VENDOR), (const char*)glGetString(GL_RENDERER));
     LOG_INFO(Graphics, "GLES32: surface resolved to {}x{} {}", _w, _h, _windowed ? "windowed" : "fullscreen");
 
 #ifdef __ANDROID__
-    // Query DXT support dynamically on Android.
+    // query DXT support dynamically on android.
     if (SDL_GL_ExtensionSupported("GL_EXT_texture_compression_s3tc"))
     {
-        _dxtFormats = 0x3E; // DXT1..DXT5
+        _dxtFormats = 0x3E; // DXT1..DXT5.
         LOG_INFO(Graphics, "GLES32: Hardware S3TC (DXT) texture compression supported by driver.");
     }
     else
@@ -501,24 +485,22 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
     }
 #endif
 
-    // Hook SDL events to the engine.
+    // hook SDL events to the engine.
     _eventWindow.Attach(_sdlWindow, _w, _h);
 
-    // Initialize shaders, vertex buffers, and 3D state.  InitGL also
-    // sets the GL viewport; the Splash / progress UI handles showing
-    // something during startup.
+    // initialize shaders, vertex buffers, and 3d state. InitGL also sets the
+    // gl viewport; the splash or progress UI handles startup feedback.
     LoadConfig();
     InitGL();
 }
 
 EngineGLES32::ShutdownGuard::~ShutdownGuard()
 {
-    // I-05 / B-019: clear the base class's FontCache while
-    // `engine->_textBank` is still alive.  This destructor runs
-    // FIRST in the EngineGLES32 teardown chain (last-declared member,
-    // first-destroyed), so `_textBank` and every other EngineGLES32
-    // member still have valid storage at this point.  By the time
-    // the base `~Engine()` destroys `_fonts`, it is empty and the
+    // I-05 / B-019: clear the base class FontCache while engine->_textBank is
+    // still alive.
+    // this destructor runs first in the EngineGLES32 teardown chain, so
+    // _textBank and the other EngineGLES32 members still have valid storage.
+    // by the time the base ~Engine() destroys _fonts, it is empty and the
     // dangling-Ref<Texture> path of B-019 cannot fire.
     if (engine)
         engine->ClearFontCache();

@@ -262,10 +262,8 @@ class TextBankGLES32 : public AbstractTextBank
 
     EngineGLES32* _engine;
 
-    // Memory-budget observability only. GPU eviction must run on the render
-    // thread (the frame-LRU in StartFrame/FinishFrame already self-caps to
-    // _maxTextureMemory), so this probe reports residency but exposes no Free
-    // hook to the (possibly off-thread) global pressure path.
+    // reports texture residency to the global memory manager. gpu eviction
+    // remains render-thread only and is handled by the per-frame lru.
     Poseidon::Foundation::MemoryDomainProbe _memProbe;
 
     GLES32MipCacheRoot _thisFrameWholeUsed;

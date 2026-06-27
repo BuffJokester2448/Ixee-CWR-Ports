@@ -7,36 +7,27 @@
 
 #include <cstddef>
 
-// Vertex attribute layout helpers for the two vertex types the
-// GL33 backend uses:
+// vertex attribute layouts for the two vertex formats used by the gles32
+// backend.
 //
-//   TLVertex — screen-space, fully pre-transformed (pos, rhw, color,
-//              specular, uv0, uv1).  Read by VSScreen.
+// tlvertex is the screen-space, pre-transformed layout consumed by
+// vsScreen. svertex is the 3d mesh layout consumed by vstTransform. both
+// layouts share the same physical vertex buffer; the active vao decides how
+// the gpu interprets the bytes.
 //
-//   SVertex  — 3D mesh (pos, norm, uv).  Read by VSTransform from
-//              the SAME underlying byte buffer the TLVertex layout
-//              uses for VSScreen — different layouts share the
-//              physical memory; the GPU reinterprets bytes based
-//              on the active VAO's attribute table.  When VSScreen-
-//              shaped data lives in the buffer, the VSTransform
-//              read produces "garbage" for the normal slot (it
-//              reads the rhw+color+specular bytes) which is the
-//              expected behaviour matching the D3D11 backend.
+// when tlvertex-shaped data is read through the svertex layout, the normal
+// attribute sees the rhw, color, and specular bytes instead of a true normal.
+// that result is expected and matches the d3d11 backend.
 //
-// Centralising both layouts here means:
-//   - `offsetof(...)` is used everywhere (no hardcoded byte
-//     offsets that drift if a field is added),
-//   - the two VAO setups in `CreateVB` and any per-mesh VAO
-//     setup share a single source of truth,
-//   - adding a new vertex attribute means editing two structs
-//     (the C++ struct + the shader's `in` declarations) and
-//     this header — not also patching every CreateVB-style site.
+// keeping the layouts here centralises the offsetof-based attribute offsets,
+// keeps the vao setup code in sync, and makes vertex-format changes local to
+// this header plus the shader declarations.
 
 namespace Poseidon::render::vao
 {
 
-// VSScreen reads TLVertex with 6 attributes.  Caller must have a
-// non-zero VAO + the corresponding VBO bound to GL_ARRAY_BUFFER.
+// vsscreen reads tlvertex with six attributes. the caller must bind a vao and
+// the matching vbo to gl_array_buffer first.
 inline void SetupTLVertexLayout()
 {
     const GLsizei stride = sizeof(TLVertex);
@@ -56,8 +47,8 @@ inline void SetupTLVertexLayout()
     glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(TLVertex, t1)));
 }
 
-// VSTransform reads SVertex with 3 attributes.  Caller must have a
-// non-zero VAO + the corresponding VBO bound to GL_ARRAY_BUFFER.
+// vstransform reads svertex with three attributes. the caller must bind a vao
+// and the matching vbo to gl_array_buffer first.
 inline void SetupSVertexLayout()
 {
     const GLsizei stride = sizeof(SVertex);

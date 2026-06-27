@@ -17,10 +17,10 @@ void EngineGLES32::CreateVB()
     if (!_glContext)
         return;
 
-    // Core profile requires a non-zero VAO bound for any
-    // GL_ELEMENT_ARRAY_BUFFER bind (IBO binding is part of VAO state).
-    // Gen everything up front, then bind each VAO and configure the
-    // shared VBO/IBO inside it.
+    // core profile requires a non-zero vao for any gl_element_array_buffer
+    // bind because ibo state is part of the vao.
+    // generate the objects up front, then bind each vao and configure the
+    // shared vbo and ibo inside it.
     glGenBuffers(1, &_vbo);
     glGenBuffers(1, &_ibo);
     glGenVertexArrays(1, &_vaoScreen);
@@ -28,8 +28,9 @@ void EngineGLES32::CreateVB()
 
     size_t stride = sizeof(TLVertex);
 
-    // --- VAO for screen-space rendering (vsScreen) ---
-    // TLVertex layout: pos(vec3), rhw(float), color(BGRA), specular(BGRA), uv0(vec2), uv1(vec2)
+    // vao for screen-space rendering (vsScreen).
+    // tlvertex layout: pos(vec3), rhw(float), color(bgra), specular(bgra),
+    // uv0(vec2), uv1(vec2).
     GLES32Bind::Vao(_vaoScreen);
     glBindBuffer(GL_ARRAY_BUFFER, _vbo);
     glBufferData(GL_ARRAY_BUFFER, MeshBufferLength * sizeof(TLVertex), nullptr, GL_DYNAMIC_DRAW);
@@ -38,9 +39,10 @@ void EngineGLES32::CreateVB()
 
     Poseidon::render::vao::SetupTLVertexLayout();
 
-    // --- VAO for 3D mesh rendering (vsTransform) ---
-    // Reads TLVertex data but interprets as: SVertex (pos, norm, uv).
-    // Normal reads (rhw + color + specular) as 3 floats — same junk as D3D11.
+    // vao for 3d mesh rendering (vsTransform).
+    // reads tlvertex data but interprets it as svertex (pos, norm, uv).
+    // the normal slot reads rhw, color, and specular as three floats, which
+    // matches the D3D11 garbage-read behavior.
     GLES32Bind::Vao(_vaoMesh);
     glBindBuffer(GL_ARRAY_BUFFER, _vbo);
     Poseidon::render::ibo::BindOnActiveVao(_ibo);

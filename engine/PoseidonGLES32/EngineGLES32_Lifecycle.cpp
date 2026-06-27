@@ -158,13 +158,12 @@ void EngineGLES32::InitDraw(bool clear, PackedColor color)
     if (_textBank)
         _textBank->StartFrame();
 
-    // Invalidate the material/light cache at frame start so it never lives across
-    // frames. Within a frame the cache key (material + DisableSun + light-list
-    // signature) covers every per-draw-varying input; the frame-constant globals
-    // the upload also folds in — MainLight NightEffect and sun diffuse/ambient —
-    // are not in the key, so a cache that survived into the next frame could
-    // freeze a dusk/dawn transition on a static same-material draw. Resetting per
-    // frame keeps those fresh without widening the per-draw key.
+    // invalidate the material/light cache at frame start so it never survives
+    // across frames.
+    // the per-draw key covers the changing material and light-list inputs, but
+    // frame-constant globals such as MainLight NightEffect and sun diffuse or
+    // ambient are not part of that key.
+    // resetting per frame keeps those values fresh without widening the draw key.
     _materialSetSpec = -1;
 
     base::InitDraw();
@@ -187,10 +186,10 @@ void EngineGLES32::FinishDraw()
 {
     if (_frameOpen)
     {
-        // Safety: if the frame ended while the world viewport was still
-        // cropped (no 2D draw followed the 3D pass), restore it + bars.
+        // if the frame ended while the world viewport was still cropped, restore
+        // it and the bars before presenting.
         EndWorldViewport();
-        // The active pass debug group must not span the swap.
+        // the active pass debug group must not span the swap.
         ClosePassDebugGroup();
         base::FinishDraw();
         base::DrawFinishTexts();
@@ -439,13 +438,12 @@ void EngineGLES32::PreReset(bool hard)
 {
     FreeAllQueues(_queueNo);
 
-    // Detach engine textures from units 0/1 by re-binding the 1x1 white
-    // sentinel.  Binding GL name 0 here would leave the units pointing at
-    // a texture object with no defined base level, which the driver flags
-    // as a KHR_debug LOW warning the moment any draw happens between the
-    // soft Reset and the next SetTexture (id 131204).  The sentinel
-    // survives a soft reset and is recreated by InitGL on a hard reset
-    // (PreReset(true) is followed by DestroySurfaces + InitGL).
+    // detach engine textures from units 0 and 1 by rebinding the 1x1 white
+    // sentinel.
+    // binding GL name 0 here would leave the units pointing at a texture with
+    // no defined base level, which the driver warns about on the next draw.
+    // the sentinel survives a soft reset and is recreated by InitGL on a hard
+    // reset.
     GLuint placeholder = _fallbackWhiteTex ? _fallbackWhiteTex : 0;
     for (int i = 0; i < 2; i++)
     {
@@ -486,7 +484,7 @@ bool EngineGLES32::Reset()
 
     PreReset(false);
 
-    // Window size may have changed — rebuild the frame target at the new
+    // the window size may have changed, so rebuild the frame target at the new
     // dimensions before deriving the viewport from it.
     DestroySSAATarget();
     ApplyPendingRenderScale();
@@ -509,12 +507,12 @@ void EngineGLES32::ResetForRemount()
 {
     GLES32Bind::Invalidate();
     InvalidatePipelineCache();
-    // A mod re-mount only changes *content*, not GL infrastructure. Flush any
-    // queued draws and release the GPU textures tied to the old banks — the new
-    // mod set's textures reload on demand. Shaders, vertex buffers and sampler
-    // state are engine-level (not mod content) and MUST stay intact: a full
-    // ResetHard tears them down and leaves the VS material-constant binding null
-    // for the first post-reload draw (UploadVSMaterialConstants then faults).
+    // a mod remount changes content, not gl infrastructure.
+    // flush queued draws and release textures tied to the old banks; the new
+    // content reloads on demand.
+    // shaders, vertex buffers, and sampler state are engine-level and must stay
+    // intact. a full ResetHard would tear them down and leave the VS material
+    // constant binding null for the first post-reload draw.
     FreeAllQueues(_queueNo);
     if (_textBank)
     {
@@ -648,9 +646,9 @@ bool EngineGLES32::SwitchRefreshRate(int refresh)
 
 bool EngineGLES32::SetSwapInterval(int interval)
 {
-    // SDL3 SDL_GL_SetSwapInterval handles all three modes natively:
-    // 0 = off, 1 = on, -1 = adaptive (where supported; falls back to 1
-    // automatically when adaptive isn't available on the current driver).
+    // SDL3 SDL_GL_SetSwapInterval handles all three modes natively.
+    // 0 = off, 1 = on, and -1 = adaptive where supported, with fallback to 1
+    // when adaptive is unavailable on the current driver.
     return SDL_GL_SetSwapInterval(interval);
 }
 
@@ -675,10 +673,10 @@ bool EngineGLES32::SetWindowMode(WindowMode mode)
     _windowMode = mode;
     _pendingExclusiveEnter = (mode == WindowMode::Fullscreen && _windowed);
 
-    // Build a synthetic DisplayConfig so we can route through the
-    // shared resolver — keeps the "borderless covers monitor" rule in
-    // exactly one place (WindowPlacement.cpp) and makes runtime mode
-    // toggles match the initial-create behaviour bit-for-bit.
+    // build a synthetic DisplayConfig so the shared resolver handles the
+    // placement logic.
+    // this keeps the borderless-cover-monitor rule in one place and makes
+    // runtime mode toggles match the initial-create behavior.
     DisplayPlacementInput synth;
     synth.displayMode = (mode == WindowMode::Fullscreen)   ? "exclusive"
                         : (mode == WindowMode::Borderless) ? "borderless"
@@ -718,36 +716,33 @@ bool EngineGLES32::SetWindowMode(WindowMode mode)
     }
     const WindowPlacement p = ResolveWindowPlacement(synth, desktopW, desktopH, desktopRefresh);
 
-    // Windowed: leave fullscreen first so size/border/pos edits land on
-    // a regular window. Borderless uses SDL's "desktop fullscreen"
-    // path (nullptr mode). Exclusive fullscreen installs a concrete
-    // display mode first so the monitor can switch away from desktop.
+    // windowed mode leaves fullscreen first so size, border, and position
+    // edits land on a regular window.
+    // borderless uses SDL's desktop-fullscreen path. exclusive fullscreen
+    // installs a concrete display mode first so the monitor can switch away
+    // from the desktop.
     if (p.mode == WindowMode::Windowed)
     {
         SDL_SetWindowFullscreenMode(_sdlWindow, nullptr);
         SDL_SetWindowFullscreen(_sdlWindow, false);
         SDL_SetWindowBordered(_sdlWindow, true);
-        // Restore resizability: the window may have been created without
-        // SDL_WINDOW_RESIZABLE (fullscreen/borderless startup) or lost the
-        // flag after a fullscreen transition.  SDL_SetWindowBordered does
-        // not restore it.
+        // restore resizability: the window may have been created without
+        // SDL_WINDOW_RESIZABLE or lost the flag during a fullscreen transition.
+        // SDL_SetWindowBordered does not restore it.
         SDL_SetWindowResizable(_sdlWindow, true);
         SDL_SetWindowSize(_sdlWindow, p.width, p.height);
-        // The resolver returns `kCentered` for windowed; translate to
-        // SDL_WINDOWPOS_CENTERED so the window actually re-centers.
-        // Without this, the window keeps whatever position it had
-        // before (the prior borderless geometry at (0,0)), so toggling
-        // Borderless -> Windowed shrinks the window in place at the
-        // top-left corner instead of returning to the centre.
+        // the resolver returns kCentered for windowed, so translate it to
+        // SDL_WINDOWPOS_CENTERED and let SDL recenter the window.
+        // without this, a borderless-to-windowed toggle would shrink the
+        // window in place at the top-left corner.
         const int wantX = (p.posX == WindowPlacement::kCentered) ? SDL_WINDOWPOS_CENTERED : p.posX;
         const int wantY = (p.posY == WindowPlacement::kCentered) ? SDL_WINDOWPOS_CENTERED : p.posY;
         SDL_SetWindowPosition(_sdlWindow, wantX, wantY);
-        // SDL's `OnFullscreenChanged` callback updates `_windowed` for
-        // transitions that go through the SDL fullscreen state machine,
-        // but the Borderless path below no longer enters that state
-        // (see SDL #12791 comment).  Set the flag explicitly here so
-        // `IsWindowed()` and every downstream check stay coherent
-        // regardless of which transition we came from.
+        // SDL's OnFullscreenChanged callback updates _windowed for transitions
+        // that go through the fullscreen state machine, but the borderless path
+        // below no longer enters that state.
+        // set the flag explicitly here so IsWindowed() and downstream checks
+        // stay coherent.
         _windowed = true;
     }
     else if (p.mode == WindowMode::Fullscreen)
@@ -766,10 +761,9 @@ bool EngineGLES32::SetWindowMode(WindowMode mode)
     }
     else
     {
-        // Borderless: keep the Windows-only SDL #12791 workaround, but
-        // on Linux/macOS use SDL's real desktop-fullscreen state so the
-        // compositor treats the window as fullscreen instead of a
-        // regular work-area-clamped borderless window.
+        // borderless keeps the Windows-only SDL #12791 workaround, but on
+        // Linux and macOS it uses SDL's real desktop-fullscreen state so the
+        // compositor treats the window as fullscreen.
 #ifdef _WIN32
         SDL_SetWindowFullscreenMode(_sdlWindow, nullptr);
         SDL_SetWindowFullscreen(_sdlWindow, false);
@@ -912,21 +906,19 @@ void EngineGLES32::OnWindowResized(int w, int h)
         return;
 
 #ifndef __ANDROID__
-    // On desktop, when in a non-windowed mode we don't want spurious OS
-    // resize events overriding the mode we explicitly set.  Keep _w/_h.
+    // on desktop, non-windowed mode should not let spurious resize events
+    // override the size we explicitly set.
     if (!_windowed && _w > 0 && _h > 0)
     {
         w = _w;
         h = _h;
     }
 #else
-    // On Android the EGL surface is initially created at the safe-area
-    // height (e.g. 1080x2310).  When the window goes fullscreen the
-    // SurfaceView grows to the physical size (e.g. 1080x2400) and SDL
-    // fires SDL_EVENT_WINDOW_RESIZED.  We MUST accept that resize so
-    // that Reset() recreates the EGL surface at the correct dimensions;
-    // otherwise every submitted buffer is rejected by BLASTBufferQueue.
-    // Use SDL_GetDisplayBounds for the authoritative physical size.
+    // on android the EGL surface starts at the safe-area size.
+    // when the window goes fullscreen, SurfaceView expands to the physical
+    // display size and SDL fires SDL_EVENT_WINDOW_RESIZED.
+    // accept that resize so Reset() can recreate the EGL surface at the right
+    // dimensions; otherwise BLASTBufferQueue rejects submitted buffers.
     if (!_windowed && _sdlWindow)
     {
         SDL_DisplayID display = SDL_GetDisplayForWindow(_sdlWindow);
@@ -950,10 +942,9 @@ void EngineGLES32::OnWindowResized(int w, int h)
     }
     Reset();
 
-    // Fire the aspect-policy post-hook so apps re-resolve the
-    // aspect rectangle for the new viewport.  Without this the
-    // UI rect stays at whatever was computed at boot — pillarboxed
-    // even on a 16:9 viewport when boot picked a different default.
+    // fire the aspect-policy post-hook so apps re-resolve the aspect rectangle
+    // for the new viewport.
+    // without this, the UI rect can stay locked to the boot-time default.
     FireResizePostHook(w, h);
 }
 
@@ -1056,7 +1047,7 @@ void EngineGLES32::InitGL()
 
     _frameOpen = false;
 
-    // Initialize queue storage
+    // initialize queue storage.
     static StaticStorage<WORD> TriangleQueueStorageNo[MaxTriQueues];
     for (int i = 0; i < MaxTriQueues; i++)
     {
@@ -1064,11 +1055,10 @@ void EngineGLES32::InitGL()
         triqNo._triangleQueue.SetStorage(TriangleQueueStorageNo[i].Init(TriQueueSize));
     }
 
-    // 1x1 opaque-white sentinel for untextured P3D faces — see EngineGLES32.hpp
-    // for the full rationale.  Created FIRST (before any other GL setup)
-    // and pre-bound to unit 0, so any draw triggered before the first
-    // SetTexture (early splash/progress paths) samples a defined texture
-    // instead of GL name 0.
+    // 1x1 opaque-white sentinel for untextured P3D faces; see EngineGLES32.hpp
+    // for the rationale.
+    // create it before any other gl setup and pre-bind it to unit 0 so early
+    // draws sample a defined texture instead of GL name 0.
     glGenTextures(1, &_fallbackWhiteTex);
     GLES32Bind::Tex2D(kUploadUnit - GL_TEXTURE0, _fallbackWhiteTex);
     const uint32_t whitePixel = 0xFFFFFFFFu;
@@ -1109,20 +1099,19 @@ void EngineGLES32::ShutdownGL()
     }
 }
 
-// TextureDestroyed is mandated by the Engine interface (callers in the
-// texture-destruction path notify the engine).  GL33 has no per-texture
-// teardown work to do — the GL handle is released by TextureGLES32 itself.
+// TextureDestroyed is required by the Engine interface.
+// GL33 has no per-texture teardown work here because TextureGLES32 releases
+// the GL handle itself.
 void EngineGLES32::TextureDestroyed(Texture*) {}
 
 namespace Poseidon
 {
 Engine* CreateEngineGLES32(int w, int h, bool windowed, int bpp)
 {
-    // Construct first so SDL video / window are initialised, then hide
-    // the OS cursor unconditionally — the game draws its own cursor
-    // sprite (menu Arrow, in-game crosshair, viewer crosshair).
-    // SDL_HideCursor before the window exists is a no-op on some SDL3
-    // backends, so the order matters.
+    // construct the engine first so SDL video and the window are initialized,
+    // then hide the OS cursor unconditionally.
+    // the game draws its own cursor sprite, and SDL_HideCursor before the
+    // window exists is a no-op on some SDL3 backends.
     Engine* engine = new EngineGLES32(w, h, windowed, bpp);
     SDL_HideCursor();
     return engine;

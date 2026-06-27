@@ -16,7 +16,7 @@
 WORD* EngineGLES32::QueueAdd(QueueGLES32& queue, int n)
 {
     if (_instCount > 1)
-        _instImpure = true; // soup-queue geometry can't be instanced — run must fall back
+        _instImpure = true; // soup-queue geometry cannot be instanced, so the run must fall back.
 
     PoseidonAssert(queue._actTri >= 0);
     PoseidonAssert(queue._triUsed[queue._actTri]);
@@ -72,7 +72,7 @@ void EngineGLES32::FlushQueue(QueueGLES32& queue, int index)
     int n = triq._triangleQueue.Size();
     if (n > 0)
     {
-        // Upload the deferred vertex range before any draw consumes it.
+        // upload the deferred vertex range before any draw consumes it.
         UploadPendingVertices();
 
         if (index == MaxTriQueues - 1)
@@ -87,22 +87,17 @@ void EngineGLES32::FlushQueue(QueueGLES32& queue, int index)
             return;
         }
 
-        // SelectVertexShader's VAO bind is cached on shader change only,
-        // so a same-shader call doesn't rebind.  Combined with other
-        // paths that leave a different VAO bound (e.g. DrawSectionTL's
-        // mesh VAO), we may arrive here with the wrong VAO.  Bind
-        // _vaoScreen explicitly — TLVertex layout matches it.
+        // SelectVertexShader only rebinds the vao when the shader changes, so a
+        // same-shader call can leave a different vao bound from another path.
+        // bind _vaoScreen explicitly because it matches the TLVertex layout.
         GLES32Bind::Vao(_vaoScreen);
-        // This direct VAO bind desyncs the VAO from _vertexShaderSel, which the
-        // effort-06 ApplyPipeline pass-dedup cache assumes stay paired (SelectVertexShader
-        // owns both). Without invalidating, the next 3D draw's identical descriptor
-        // short-circuits ApplyPipeline -> SelectVertexShader is skipped -> the mesh draws
-        // through this 2D _vaoScreen layout -> garbage vertices (the Single Missions
-        // notebook rendered invisible). Invalidate so the next ApplyPipeline re-selects
-        // its shader and rebinds the mesh VAO.
+        // this direct vao bind desynchronizes the vao from _vertexShaderSel, which
+        // ApplyPipeline assumes stays paired with the shader selection.
+        // invalidate the pipeline cache so the next 3d draw reselects its shader
+        // and rebinds the mesh vao.
         InvalidatePipelineCache();
 
-        // Upload indices
+        // upload indices.
         int indexOffset = 0;
         int ibSize = n * sizeof(WORD);
         Poseidon::render::ibo::BindOnActiveVao(_ibo);
@@ -121,17 +116,17 @@ void EngineGLES32::FlushQueue(QueueGLES32& queue, int index)
         }
         queue._indexBufferUsed = indexOffset + n;
 
-        // Bind vertex buffer
+        // bind the vertex buffer.
         glBindBuffer(GL_ARRAY_BUFFER, _vbo);
 
-        // Draw
+        // draw.
         FlushVSConstants();
         FlushPSConstants();
 
         glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_SHORT, (void*)(intptr_t)(indexOffset * sizeof(WORD)));
         ++Poseidon::gPerfDrawCalls;
 
-        // Record DrawItem
+        // record the draw item.
         DrawItem item = {};
         item.isTLDraw = false;
         item.specFlags = Poseidon::render::SplitLegacy(triq._special);
@@ -166,7 +161,7 @@ int EngineGLES32::AllocateQueue(QueueGLES32& queue, TextureGLES32* tex, int leve
         PoseidonAssert(queue._triUsed[index]);
         return index;
     }
-    // Free LRU queue
+    // free the least-recently-used queue.
     int minUsed = INT_MAX;
     for (int i = minI; i < maxI; i++)
     {
@@ -241,9 +236,9 @@ void EngineGLES32::D3DPrepare3DLine() {}
 void EngineGLES32::ApplyPassState(TextureGLES32* tex, int level, const Poseidon::render::LegacySpec& spec, PassId passId,
                                 PipelineVertexInput vertexInput)
 {
-    // State derivation lives in BuildRenderPassDescriptor; ApplyPassState
-    // just assembles the BuildContext, calls the translation, and binds the
-    // result.  The descriptor is the single seam that decodes spec bits.
+    // state derivation lives in BuildRenderPassDescriptor; ApplyPassState only
+    // assembles the build context, translates it, and binds the result.
+    // the descriptor is the single seam that decodes spec bits.
     Poseidon::render::BuildContext ctx;
     ctx.isIn3DPass = vertexInput == PipelineVertexInput::Mesh
                    ? true
@@ -258,8 +253,8 @@ void EngineGLES32::ApplyPassState(TextureGLES32* tex, int level, const Poseidon:
     ApplyPipeline(d);
     _pipelineVertexInput = previousVertexInput;
 
-    // IsTexBound is the sole gate: it reflects OnTexDeleted, so deleted handles
-    // that the driver recycles for new textures are never silently skipped.
+    // IsTexBound is the only gate here because it reflects OnTexDeleted and
+    // keeps recycled handles from being skipped silently.
     unsigned int tHandle = tex ? tex->GetHandle() : 0;
     if (!GLES32Bind::IsTexBound(0, tHandle))
     {
@@ -317,22 +312,22 @@ void EngineGLES32::BeginPass(PassId passId)
     _activePassId = passId;
 
     SelectVertexShader(VSTransform);
-    // BeginPass bootstraps the 3D pass through the normal mesh shader before
-    // the first descriptor-owned draw. If the previous 3D draw had the same
-    // descriptor as the first draw in this pass (for example two shadow
-    // markers separated by a screen pass), ApplyPipeline would otherwise skip
-    // and leave VSTransform paired with PSShadow.
+    // BeginPass boots the 3d pass through the normal mesh shader before the
+    // first descriptor-owned draw.
+    // if the previous 3d draw had the same descriptor as the first draw in this
+    // pass, ApplyPipeline could otherwise skip and leave VSTransform paired
+    // with PSShadow.
     InvalidatePipelineCache();
 
-    // D3D convention: CW = front face. With glClipControl(GL_LOWER_LEFT),
-    // no viewport Y-flip occurs, so mesh winding is preserved from NDC to window.
+    // d3d convention treats clockwise as front face. with glClipControl(GL_LOWER_LEFT),
+    // no viewport y-flip occurs, so mesh winding is preserved from ndc to window.
     Poseidon::render::cull::Back();
     Poseidon::render::cull::FrontFaceCW();
     Poseidon::render::pipeline::EnableDepthTest();
     Poseidon::render::pipeline::DisableDepthClamp();
-    // Colour writes are RGBA for the whole 3D pass.  ApplyPipeline no longer
-    // toggles the colour mask per draw (nothing disables it now), so assert
-    // it once here to keep the invariant load-bearing rather than implicit.
+    // colour writes stay rgba for the whole 3d pass.
+    // ApplyPipeline no longer toggles the color mask per draw, so assert it
+    // once here and keep the invariant explicit.
     Poseidon::render::pipeline::SetColorMask(true);
 
     if (GScene)
@@ -342,13 +337,14 @@ void EngineGLES32::BeginPass(PassId passId)
         _currentDrawItem = DrawItem{};
 
         UploadFrameConstants(_frameState);
-        // Bind the (previous frame's) shadow depth map + light-VP for the lit
-        // shaders.  No-op until a depth pass has run with shadow maps enabled.
+        // bind the previous frame's shadow depth map and light-vp for the lit
+        // shaders. this is a no-op until a depth pass has run with shadow maps
+        // enabled.
         UpdateShadowMapLitState();
     }
 
-    // Crop the 3D scene to the AspectSettings world rect (pillarbox /
-    // manual noodle).  No-op when the rect is full.
+    // crop the 3d scene to the AspectSettings world rect.
+    // this is a no-op when the rect is already full.
     ApplyWorldViewport();
 }
 
@@ -358,14 +354,14 @@ void EngineGLES32::BeginScreenPass()
         return;
     LOG_DEBUG(Graphics, "GLES32: BeginScreenPass (was passId={})", static_cast<int>(_activePassId));
     FlushAndFreeAllQueues(_queueNo);
-    // Restore the full-window viewport and black-fill the cropped
-    // periphery before any 2D/HUD draws.  No-op when the world wasn't
-    // cropped this frame.
+    // restore the full-window viewport and black-fill the cropped periphery
+    // before any 2d or hud draws.
+    // this is a no-op when the world was not cropped this frame.
     EndWorldViewport();
     SwitchPassDebugGroup(PassIdName(PassId::ScreenSpace));
     _activePassId = PassId::ScreenSpace;
 
-    // Reset the IsColored tint so a leftover mesh value can't dim the HUD.
+    // reset the IsColored tint so a leftover mesh value cannot dim the HUD.
     _psConstants.constColor[0] = 1.0f;
     _psConstants.constColor[1] = 1.0f;
     _psConstants.constColor[2] = 1.0f;
@@ -375,15 +371,11 @@ void EngineGLES32::BeginScreenPass()
     SelectVertexShader(VSScreen);
     UploadVSScreenConstants();
 
-    // Keep glEnable(GL_CULL_FACE) from BeginPass. Disabling it here lets the
-    // M113 wreck's 42 coplanar wheel decal sections (newkolo + dnewkolo
-    // front/back face pairs of each road wheel) both render at the same Z;
-    // per-pixel FP-precision races between them produce a diagonal cross-
-    // hatch artifact on every wheel hub that shifts with camera rotation.
-    // With cull enabled, GPU drops one face of each pair → clean wheels.
-    // Vehicles with only 1-2 alpha sections (Jeep/Ural/T55/BMP wrecks) are
-    // unaffected.  Regression test:
-    //   tests/screenshots/rendering/m113_wheel_flicker.test.intro
+    // keep glEnable(GL_CULL_FACE) from BeginPass.
+    // disabling it here lets the M113 wreck's coplanar wheel decal sections
+    // fight at the same z and produce a cross-hatch artifact.
+    // with culling enabled, the gpu drops one face of each pair and the wheels
+    // stay clean.
     Poseidon::render::pipeline::EnableDepthClamp();
 }
 
@@ -407,11 +399,10 @@ void EngineGLES32::AddVertices(const TLVertex* v, int n)
     if (static_cast<int>(_vboMirror.size()) < MeshBufferLength)
         _vboMirror.resize(MeshBufferLength);
 
-    // Append to the CPU mirror only; the GL upload of the accumulated range is
-    // deferred to UploadPendingVertices (called from FlushQueue before the draw
-    // that consumes these vertices).  Doing one batched glBufferSubData per
-    // flush instead of one per AddVertices call removes the per-primitive driver
-    // round-trip that dominated map / 2D draw cost.
+    // append to the cpu mirror only; the gl upload of the accumulated range is
+    // deferred to UploadPendingVertices and performed before the consuming draw.
+    // batching the upload removes the per-primitive driver round trip that
+    // dominated map and 2d draw cost.
     if (_queueNo._vertexBufferUsed + n <= MeshBufferLength && !_queueNo._firstVertex)
     {
         memcpy(&_vboMirror[_queueNo._vertexBufferUsed], v, sizeof(TLVertex) * n);
@@ -422,12 +413,12 @@ void EngineGLES32::AddVertices(const TLVertex* v, int n)
     else
     {
         _queueNo._firstVertex = false;
-        // Flush (uploads the pending mirror range + draws the queued tris) before
-        // orphaning, so nothing references the buffer we are about to discard.
+        // flush the pending mirror range and queued triangles before orphaning,
+        // so nothing references the buffer we are about to discard.
         FlushAndFreeAllQueues(_queueNo);
         glBindBuffer(GL_ARRAY_BUFFER, _vbo);
         glBufferData(GL_ARRAY_BUFFER, MeshBufferLength * sizeof(TLVertex), nullptr, GL_DYNAMIC_DRAW);
-        _vboUploadedVerts = 0; // buffer discarded; mirror[0..) is all pending again
+        _vboUploadedVerts = 0; // buffer discarded; mirror[0..) is pending again.
         memcpy(&_vboMirror[0], v, sizeof(TLVertex) * n);
         _queueNo._meshBase = 0;
         _queueNo._meshSize = n;

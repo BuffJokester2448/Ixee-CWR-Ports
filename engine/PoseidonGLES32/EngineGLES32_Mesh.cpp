@@ -27,11 +27,10 @@ void EngineGLES32::UpdateProjection()
 {
     if (IsIn3DPass())
     {
-        // Flush is the load-bearing step: pending draws must commit with the old
-        // projection before the change. (_drawItems is the per-frame draw recording
-        // the flush appends to — not a pending-draw count — so it is legitimately
-        // non-empty mid-pass.)
+        // flush queued draws before updating the projection so all pending
+        // geometry is rendered with the previous transform.
         FlushAndFreeAllQueues(_queueNo, true);
+
         Camera* camera = GScene->GetCamera();
         int projBias = _canZBias ? 0 : _bias;
         ConvertProjectionMatrix(_frameState.projection, camera->ProjectionNormal(), projBias);
@@ -43,11 +42,16 @@ bool EngineGLES32::InstancedRunAdd(const Matrix4& modelToWorld)
 {
     if (_instPending >= 256)
         return false;
+
     GfxMatrix& m = _instArray[_instPending];
     ConvertMatrix(m, modelToWorld);
+
+    // store instance transforms in camera-relative space to preserve
+    // floating-point precision for large world coordinates.
     m._41 -= _frameState.cameraPos[0];
     m._42 -= _frameState.cameraPos[1];
     m._43 -= _frameState.cameraPos[2];
+
     ++_instPending;
     return true;
 }
@@ -72,7 +76,9 @@ void EngineGLES32::PrepareMeshTLImpl(const FrameState& frame, const Matrix4& mod
 
     GfxMatrix worldMatrix;
     ConvertMatrix(worldMatrix, modelToWorld);
-    // Camera-relative rendering
+
+    // convert the object transform to camera-relative coordinates before
+    // uploading it to the gpu.
     worldMatrix._41 -= frame.cameraPos[0];
     worldMatrix._42 -= frame.cameraPos[1];
     worldMatrix._43 -= frame.cameraPos[2];
@@ -84,9 +90,10 @@ void EngineGLES32::PrepareMeshTLImpl(const FrameState& frame, const Matrix4& mod
 
     UploadObjectConstants(_currentDrawItem);
 
-    // IsColored objects carry their opacity + fade in the scene constant colour;
-    // mirror the software path (TransLight.cpp) or they render at texture alpha.
+    // iscolored materials source their constant color, opacity, and fade
+    // from the current scene instead of the default white value.
     float constColor[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+
     if (GScene && Poseidon::render::Has(spec.routing, Poseidon::render::Routing::IsColored))
     {
         ColorVal cc = GScene->GetConstantColor();
@@ -95,6 +102,7 @@ void EngineGLES32::PrepareMeshTLImpl(const FrameState& frame, const Matrix4& mod
         constColor[2] = cc.B();
         constColor[3] = cc.A();
     }
+
     if (memcmp(constColor, _psConstants.constColor, sizeof(constColor)) != 0)
     {
         memcpy(_psConstants.constColor, constColor, sizeof(constColor));
