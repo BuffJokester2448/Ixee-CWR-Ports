@@ -785,6 +785,39 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             SDLActivity.onNativeFileDialog(requestCode, filelist, -1);
             mFileDialogState = null;
         }
+
+        if (requestCode == 9999) {
+            String realPath = "";
+            if (data != null && data.getData() != null) {
+                Uri uri = data.getData();
+                String docId = android.provider.DocumentsContract.getTreeDocumentId(uri);
+                String[] split = docId.split(":");
+                String type = split[0];
+                if ("primary".equalsIgnoreCase(type)) {
+                    realPath = android.os.Environment.getExternalStorageDirectory() + "/" + (split.length > 1 ? split[1] : "");
+                } else {
+                    realPath = "/storage/" + type + "/" + (split.length > 1 ? split[1] : "");
+                }
+            }
+            onNativeFolderPicked(realPath);
+        }
+    }
+
+    public static native void onNativeFolderPicked(String path);
+
+    public static void openFolderPicker() {
+        mSingleton.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    mSingleton.startActivityForResult(intent, 9999);
+                } catch (ActivityNotFoundException e) {
+                    onNativeFolderPicked("");
+                }
+            }
+        });
     }
 
     // Called by JNI from SDL.

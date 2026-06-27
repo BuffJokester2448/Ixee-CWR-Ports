@@ -25,23 +25,68 @@ int PASCAL WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 #ifdef __ANDROID__
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_timer.h>
+#include <SDL3/SDL.h>
+#include <jni.h>
 #include <cstdlib>
 #include <unistd.h>
 #include <string>
+
+extern "C" {
+    static bool g_folderPickerDone = false;
+    static std::string g_pickedFolder = "";
+
+    JNIEXPORT void JNICALL Java_org_libsdl_app_SDLActivity_onNativeFolderPicked(JNIEnv* env, jclass cls, jstring path) {
+        if (path) {
+            const char* str = env->GetStringUTFChars(path, nullptr);
+            g_pickedFolder = str;
+            env->ReleaseStringUTFChars(path, str);
+        }
+        g_folderPickerDone = true;
+    }
+}
+
+static std::string showFolderDialog() {
+    JNIEnv* env = (JNIEnv*)SDL_GetAndroidJNIEnv();
+    if (!env) return "";
+
+    jclass activityClass = env->FindClass("org/libsdl/app/SDLActivity");
+    if (!activityClass) return "";
+
+    jmethodID openPicker = env->GetStaticMethodID(activityClass, "openFolderPicker", "()V");
+    if (!openPicker) return "";
+    
+    g_folderPickerDone = false;
+    g_pickedFolder = "";
+    
+    env->CallStaticVoidMethod(activityClass, openPicker);
+    
+    while (!g_folderPickerDone) {
+        SDL_Delay(50);
+    }
+    
+    return g_pickedFolder;
+}
 #endif
 
 int main(int argc, char* argv[])
 {
     Poseidon::Foundation::InstallCrashHandler(nullptr);
 #ifdef __ANDROID__
-    char* prefPath = SDL_GetPrefPath("cwr", "Poseidon");
-    if (prefPath) {
-        std::string fullPath = prefPath;
-        if (!fullPath.empty() && fullPath.back() == '/') fullPath.pop_back();
-        fullPath += "/Poseidon";
-        setenv("TMPDIR", fullPath.c_str(), 1);
-        chdir(fullPath.c_str());
-        SDL_free(prefPath);
+    std::string assetPath = showFolderDialog();
+    if (!assetPath.empty()) {
+        setenv("TMPDIR", assetPath.c_str(), 1);
+        chdir(assetPath.c_str());
+    } else {
+        char* prefPath = SDL_GetPrefPath("cwr", "Poseidon");
+        if (prefPath) {
+            std::string fullPath = prefPath;
+            if (!fullPath.empty() && fullPath.back() == '/') fullPath.pop_back();
+            fullPath += "/Poseidon";
+            setenv("TMPDIR", fullPath.c_str(), 1);
+            chdir(fullPath.c_str());
+            SDL_free(prefPath);
+        }
     }
 #endif
     GameDemoApplication app;
