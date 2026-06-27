@@ -27,6 +27,7 @@ int PASCAL WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 #include <SDL3/SDL_filesystem.h>
 #include <cstdlib>
 #include <unistd.h>
+#include <string>
 #endif
 
 int main(int argc, char* argv[])
@@ -35,8 +36,11 @@ int main(int argc, char* argv[])
 #ifdef __ANDROID__
     char* prefPath = SDL_GetPrefPath("cwr", "Poseidon");
     if (prefPath) {
-        setenv("TMPDIR", prefPath, 1);
-        chdir(prefPath);
+        std::string fullPath = prefPath;
+        if (!fullPath.empty() && fullPath.back() == '/') fullPath.pop_back();
+        fullPath += "/Poseidon";
+        setenv("TMPDIR", fullPath.c_str(), 1);
+        chdir(fullPath.c_str());
         SDL_free(prefPath);
     }
 #endif
