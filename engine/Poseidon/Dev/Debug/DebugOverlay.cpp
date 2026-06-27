@@ -1673,7 +1673,7 @@ namespace DebugOverlay {
 
 #ifdef __ANDROID__
 static void DrawMobileControls() {
-    if (GApp && !GApp->IsInGameplay()) return;
+    bool inGameplay = GApp && GApp->IsInGameplay();
 
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
     ImGuiIO& io = ImGui::GetIO();
@@ -1685,11 +1685,14 @@ static void DrawMobileControls() {
         float by = g_mobileButtons[i].y * h;
         float br = g_mobileButtons[i].r * h; // radius scales with height
         
+        if (!inGameplay && g_mobileButtons[i].data != SDL_SCANCODE_ESCAPE) continue;
+
         if (!::g_mobileRenderState[i].active) {
             draw->AddCircleFilled(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 40));
             draw->AddCircle(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 80));
-            ImVec2 txtSize = ImGui::CalcTextSize(g_mobileButtons[i].name);
-            draw->AddText(ImVec2(bx - txtSize.x*0.5f, by - txtSize.y*0.5f), IM_COL32(255, 255, 255, 200), g_mobileButtons[i].name);
+            float fontSize = ImGui::GetFontSize() * 1.5f;
+            ImVec2 txtSize = ImGui::GetFont()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, g_mobileButtons[i].name);
+            draw->AddText(ImGui::GetFont(), fontSize, ImVec2(bx - txtSize.x*0.5f, by - txtSize.y*0.5f), IM_COL32(255, 255, 255, 200), g_mobileButtons[i].name);
         } else {
             draw->AddCircleFilled(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 60));
             draw->AddCircle(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 100));
