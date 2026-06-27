@@ -323,7 +323,13 @@ void SoundSystemOAL::Commit()
         if (wave && wave->_wantPlaying)
         {
             wave->DoPlay();
-            wave->_wantPlaying = false;
+            // If the wave successfully started or hit an error, clear the deferred flag.
+            // If it returned early because it is still async-loading or has a delayed start
+            // (_state.curPosition < 0), keep _wantPlaying = true to retry next frame.
+            if (wave->_playing || wave->_loadError || wave->_state.terminated)
+            {
+                wave->_wantPlaying = false;
+            }
         }
     }
 

@@ -135,7 +135,9 @@ inline void* LookupSymbol(const char* name)
 
 inline bool TryLoadModule()
 {
-#ifdef _WIN32
+#ifdef __ANDROID__
+    return true;
+#elif defined(_WIN32)
     ModuleHandle() = static_cast<void*>(LoadLibraryA("OpenAL32.dll"));
     if (ModuleHandle() == nullptr)
     {
@@ -158,6 +160,9 @@ inline bool TryLoadModule()
 inline bool ResolveFunctions()
 {
     Api resolved;
+#ifdef __ANDROID__
+#define RESOLVE_OPENAL_FUNCTION(name) resolved.name = &::name;
+#else
 #define RESOLVE_OPENAL_FUNCTION(name)                                                                                   \
     resolved.name = reinterpret_cast<decltype(resolved.name)>(LookupSymbol(#name));                                    \
     if (resolved.name == nullptr)                                                                                       \
@@ -165,6 +170,7 @@ inline bool ResolveFunctions()
         SetError("Missing OpenAL symbol: " #name);                                                                      \
         return false;                                                                                                   \
     }
+#endif
     OPENAL_RUNTIME_FUNCTIONS(RESOLVE_OPENAL_FUNCTION)
 #undef RESOLVE_OPENAL_FUNCTION
 

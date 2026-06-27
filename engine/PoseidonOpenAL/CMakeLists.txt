@@ -21,10 +21,20 @@ add_library(PoseidonOpenAL STATIC
     ${POSEIDON_OPENAL_HEADERS}
 )
 
+if(ANDROID)
+    find_library(OBOE_LIB oboe)
+    add_library(oboe::oboe STATIC IMPORTED)
+    set_target_properties(oboe::oboe PROPERTIES
+        IMPORTED_LOCATION ${OBOE_LIB}
+    )
+endif()
 find_package(OpenAL CONFIG REQUIRED)
 set_target_properties(OpenAL::OpenAL PROPERTIES IMPORTED_GLOBAL TRUE)
 
 target_link_libraries(PoseidonOpenAL PUBLIC Poseidon)
+if(ANDROID)
+    target_link_libraries(PoseidonOpenAL PUBLIC OpenAL::OpenAL)
+endif()
 
 if(WIN32)
     target_link_libraries(PoseidonOpenAL PUBLIC Avrt)

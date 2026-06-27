@@ -534,15 +534,16 @@ void WaveOAL::UpdateStreamingPlayback()
     // there is queued audio left to play and the track has not genuinely
     // ended.  This recovers a starvation underrun (a frame hitch drained
     // the ring → AL_STOPPED) and completes the deferred first start (the
-    // first DoPlay had no chunk queued yet).  The !eofReached guard keeps
-    // a real end-of-track stopped so IsTerminated can reap it; mirrors the
-    // VoIP speaker's "stopped (underrun) → just restart" recovery.
-    if (_streamPlayIntent && !_paused && !_state.terminated &&
-        !_streaming.eofReached.load(std::memory_order_acquire))
+    // first DoPlay had no chunk queued yet).
+    if (_streamPlayIntent && !_paused && !_state.terminated)
     {
         ALint alState = AL_INITIAL;
         alGetSourcei(_alSource, AL_SOURCE_STATE, &alState);
-        if (alState != AL_PLAYING && alState != AL_PAUSED)
+        
+        const bool isInitial = (alState == AL_INITIAL);
+        const bool underrun = (alState == AL_STOPPED && !_streaming.eofReached.load(std::memory_order_acquire));
+        
+        if (isInitial || underrun)
         {
             ALint queued = 0;
             alGetSourcei(_alSource, AL_BUFFERS_QUEUED, &queued);
@@ -1005,17 +1006,25 @@ void WaveOAL::DoPlay()
     {
         _streamPlayIntent = true; // recover underrun / deferred start in UpdateStreamingPlayback
         UpdateStreamingPlayback(); // ensure ≥ 1 buffer queued
-        Apply3D();
-        ApplyVolume();
-        ApplyPitch();
-        AttachEFX();
-        alSourcei(_alSource, AL_LOOPING, AL_FALSE);
-        alSourcePlay(_alSource);
-        _playing      = true;
-        _everPlayed   = true;
-        _state.terminated = false;
+        if (_streaming.buffersInFlight > 0)
+        {
+            Apply3D();
+            ApplyVolume();
+            ApplyPitch();
+            AttachEFX();
+            alSourcei(_alSource, AL_LOOPING, AL_FALSE);
+            alSourcePlay(_alSource);
+            _playing      = true;
+            _everPlayed   = true;
+            _state.terminated = false;
+        }
+        else if (_streaming.eofReached.load(std::memory_order_acquire))
+        {
+            _state.terminated = true;
+        }
         return;
     }
+
 
     // Check termination/wrapping
     if (_state.curPosition >= static_cast<int>(_state.size) && _state.size > 0)
