@@ -482,6 +482,20 @@ EngineGLES32::EngineGLES32(int width, int height, bool windowed, int bpp)
              (const char*)glGetString(GL_VENDOR), (const char*)glGetString(GL_RENDERER));
     LOG_INFO(Graphics, "GLES32: surface resolved to {}x{} {}", _w, _h, _windowed ? "windowed" : "fullscreen");
 
+#ifdef __ANDROID__
+    // Query DXT support dynamically on Android.
+    if (SDL_GL_ExtensionSupported("GL_EXT_texture_compression_s3tc"))
+    {
+        _dxtFormats = 0x3E; // DXT1..DXT5
+        LOG_INFO(Graphics, "GLES32: Hardware S3TC (DXT) texture compression supported by driver.");
+    }
+    else
+    {
+        _dxtFormats = 0;
+        LOG_INFO(Graphics, "GLES32: Hardware S3TC (DXT) texture compression NOT supported. Software fallback will be used (expect performance/visual artifacts).");
+    }
+#endif
+
     // Hook SDL events to the engine.
     _eventWindow.Attach(_sdlWindow, _w, _h);
 
