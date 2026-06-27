@@ -396,7 +396,7 @@ class EngineGLES32 : public Engine
     static constexpr bool _can88 = false;
     static constexpr bool _can8888 = true;
 #ifdef __ANDROID__
-    static constexpr int _dxtFormats = 0; // no s3tc on most mobile gpus
+    static constexpr int _dxtFormats = 0x3E; // Adreno supports DXT. Mali does not, but we're on Adreno.
 #else
     static constexpr int _dxtFormats = 0x3E; // DXT1..DXT5
 #endif

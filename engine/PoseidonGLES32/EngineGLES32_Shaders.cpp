@@ -812,6 +812,7 @@ void EngineGLES32::FlushVSConstants()
     // glBindBufferBase is sticky — done once at UBO creation in
     // InitVertexShaders.  Per-flush we only update buffer contents.
     glBindBuffer(GL_UNIFORM_BUFFER, s_vsUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(s_vsShadow), nullptr, GL_DYNAMIC_DRAW);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(s_vsShadow), s_vsShadow);
 }
 
@@ -831,6 +832,7 @@ void EngineGLES32::FlushPSConstants()
     if (s_psEverUploaded && s_psUploadedUBO == s_psUBO && memcmp(s_psUploaded, s_psShadow, sizeof(s_psShadow)) == 0)
         return;
     glBindBuffer(GL_UNIFORM_BUFFER, s_psUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(s_psShadow), nullptr, GL_DYNAMIC_DRAW);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(s_psShadow), s_psShadow);
     memcpy(s_psUploaded, s_psShadow, sizeof(s_psShadow));
     s_psEverUploaded = true;
@@ -1116,6 +1118,7 @@ void EngineGLES32::UploadWorldInstances(const float* matrices, int count)
     if (count > 256)
         count = 256;
     glBindBuffer(GL_UNIFORM_BUFFER, s_worldUBO);
+    glBufferData(GL_UNIFORM_BUFFER, 256 * 64, nullptr, GL_DYNAMIC_DRAW);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, count * 64, matrices);
 }
 
@@ -1127,6 +1130,7 @@ void EngineGLES32::UploadVSWorldMatrix(const float worldMatrix[16])
     if (s_worldUBO)
     {
         glBindBuffer(GL_UNIFORM_BUFFER, s_worldUBO);
+        glBufferData(GL_UNIFORM_BUFFER, 256 * 64, nullptr, GL_DYNAMIC_DRAW);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, 64, worldMatrix);
         return;
     }
@@ -1137,6 +1141,7 @@ void EngineGLES32::UploadVSWorldMatrix(const float worldMatrix[16])
     if (!s_vsUBO)
         return;
     glBindBuffer(GL_UNIFORM_BUFFER, s_vsUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(s_vsShadow), nullptr, GL_DYNAMIC_DRAW);
     glBufferSubData(GL_UNIFORM_BUFFER, VSConst::SlotWorld * 4 * sizeof(float), 64, s_vsShadow + VSConst::SlotWorld * 4);
 }
 

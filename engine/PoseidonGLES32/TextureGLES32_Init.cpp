@@ -82,24 +82,32 @@ static PacFormat DstFormat(PacFormat srcFormat, int dxt)
 void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableDXT)
 {
     desc.compressed = false;
+    switch (format)
+    {
+        case PacDXT1:
+            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
+            desc.compressed = true;
+            return;
+        case PacDXT2:
+        case PacDXT3:
+            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
+            desc.compressed = true;
+            return;
+        case PacDXT4:
+        case PacDXT5:
+            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+            desc.compressed = true;
+            return;
+        default:
+            break;
+    }
+
 #ifdef __ANDROID__
     // gles does not support GL_BGRA or _REV packed pixel types.
     // all ARGB formats get uploaded as GL_RGBA + GL_UNSIGNED_BYTE
     // after a cpu byte swap in the upload path.
-    // s3tc/dxt is decompressed to rgba on cpu since most mobile gpus
-    // (mali in particular) do not support the extension.
     switch (format)
     {
-        case PacDXT1:
-        case PacDXT2:
-        case PacDXT3:
-        case PacDXT4:
-        case PacDXT5:
-            // decompress on cpu, upload as RGBA8
-            desc.internalFormat = GL_RGBA8;
-            desc.pixelFormat = GL_RGBA;
-            desc.pixelType = GL_UNSIGNED_BYTE;
-            break;
         case PacARGB1555:
             desc.internalFormat = GL_RGBA8;
             desc.pixelFormat = GL_RGBA;
@@ -138,20 +146,7 @@ void InitGLESPixelFormat(TextureDescGLES32& desc, PacFormat format, bool enableD
 #else
     switch (format)
     {
-        case PacDXT1:
-            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
-            desc.compressed = true;
-            break;
-        case PacDXT3:
-        case PacDXT2:
-            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
-            desc.compressed = true;
-            break;
-        case PacDXT5:
-        case PacDXT4:
-            desc.internalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
-            desc.compressed = true;
-            break;
+
         case PacARGB1555:
             desc.internalFormat = GL_RGB5_A1;
             desc.pixelFormat = GL_BGRA;
