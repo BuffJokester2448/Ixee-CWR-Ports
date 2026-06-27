@@ -74,10 +74,19 @@ int main(int argc, char* argv[])
     Poseidon::Foundation::InstallCrashHandler(nullptr);
 #ifdef __ANDROID__
     std::string assetPath = showFolderDialog();
+    bool chdirSuccess = false;
+    
     if (!assetPath.empty()) {
         setenv("TMPDIR", assetPath.c_str(), 1);
-        chdir(assetPath.c_str());
-    } else {
+        if (chdir(assetPath.c_str()) == 0) {
+            chdirSuccess = true;
+            SDL_Log("Successfully set working directory to: %s", assetPath.c_str());
+        } else {
+            SDL_Log("Failed to chdir to %s. Did you grant 'All Files Access' permission in Android Settings?", assetPath.c_str());
+        }
+    }
+    
+    if (!chdirSuccess) {
         char* prefPath = SDL_GetPrefPath("cwr", "Poseidon");
         if (prefPath) {
             std::string fullPath = prefPath;
@@ -86,6 +95,7 @@ int main(int argc, char* argv[])
             setenv("TMPDIR", fullPath.c_str(), 1);
             chdir(fullPath.c_str());
             SDL_free(prefPath);
+            SDL_Log("Fell back to default private directory: %s", fullPath.c_str());
         }
     }
 #endif

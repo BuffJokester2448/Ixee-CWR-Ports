@@ -810,6 +810,20 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             @Override
             public void run() {
                 try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        if (!android.os.Environment.isExternalStorageManager()) {
+                            Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                            Uri uri = Uri.fromParts("package", mSingleton.getPackageName(), null);
+                            intent.setData(uri);
+                            mSingleton.startActivity(intent);
+                            // We return immediately, user will have to restart the app or the picker will fail this time.
+                            // Better to just show a toast.
+                            android.widget.Toast.makeText(mSingleton, "Please grant 'All Files Access' and restart the game.", android.widget.Toast.LENGTH_LONG).show();
+                            onNativeFolderPicked("");
+                            return;
+                        }
+                    }
+
                     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                     mSingleton.startActivityForResult(intent, 9999);
