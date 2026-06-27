@@ -33,6 +33,16 @@ using namespace Poseidon;
 extern World* ::Poseidon::GWorld;
 extern Engine* ::Poseidon::GEngine;
 
+#ifdef __ANDROID__
+float g_mobileLeftJoyStartX = 0, g_mobileLeftJoyStartY = 0;
+float g_mobileLeftJoyCurrX = 0, g_mobileLeftJoyCurrY = 0;
+bool g_mobileLeftJoyActive = false;
+
+float g_mobileRightJoyStartX = 0, g_mobileRightJoyStartY = 0;
+float g_mobileRightJoyCurrX = 0, g_mobileRightJoyCurrY = 0;
+bool g_mobileRightJoyActive = false;
+#endif
+
 // UI key event dispatch — routes SDL key events to World::DoKeyDown/DoKeyUp
 
 struct UIKeyEvent
@@ -212,6 +222,13 @@ void SDLInput_BufferMouseMotion(float dx, float dy)
 void SDLInput_BufferMouseWheel(float dy)
 {
     GInput.mouse.BufferWheel(dy);
+}
+
+void SDLInput_SetAbsoluteCursor(float cx, float cy)
+{
+    GInput.cursor.cursorX = cx;
+    GInput.cursor.cursorY = cy;
+    GInput.mouse.cursorLastActive = Glob.uiTime;
 }
 
 void ProcessMouse_SDL(DWORD timeDelta)

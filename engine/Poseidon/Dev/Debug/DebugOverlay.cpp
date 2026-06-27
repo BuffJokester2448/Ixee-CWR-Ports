@@ -1637,6 +1637,38 @@ void ProcessEvent(const SDL_Event& event)
     }
 }
 
+#ifdef __ANDROID__
+extern float g_mobileLeftJoyStartX, g_mobileLeftJoyStartY, g_mobileLeftJoyCurrX, g_mobileLeftJoyCurrY;
+extern bool g_mobileLeftJoyActive;
+extern float g_mobileRightJoyStartX, g_mobileRightJoyStartY, g_mobileRightJoyCurrX, g_mobileRightJoyCurrY;
+extern bool g_mobileRightJoyActive;
+
+static void DrawMobileControls() {
+    if (GApp && !GApp->IsInGameplay()) return;
+
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    ImGuiIO& io = ImGui::GetIO();
+    float w = io.DisplaySize.x;
+    float h = io.DisplaySize.y;
+
+    // Left Joystick
+    if (!g_mobileLeftJoyActive) {
+        draw->AddCircleFilled(ImVec2(0.2f * w, 0.7f * h), 60.0f, IM_COL32(255, 255, 255, 40));
+    } else {
+        draw->AddCircleFilled(ImVec2(g_mobileLeftJoyStartX * w, g_mobileLeftJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
+        draw->AddCircleFilled(ImVec2(g_mobileLeftJoyCurrX * w, g_mobileLeftJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
+    }
+
+    // Right Joystick / Fire
+    if (!g_mobileRightJoyActive) {
+        draw->AddCircleFilled(ImVec2(0.8f * w, 0.7f * h), 60.0f, IM_COL32(255, 255, 255, 40));
+    } else {
+        draw->AddCircleFilled(ImVec2(g_mobileRightJoyStartX * w, g_mobileRightJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
+        draw->AddCircleFilled(ImVec2(g_mobileRightJoyCurrX * w, g_mobileRightJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
+    }
+}
+#endif
+
 void NewFrame()
 {
     if (!s_initialized)
@@ -1651,6 +1683,11 @@ void NewFrame()
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    
+#ifdef __ANDROID__
+    DrawMobileControls();
+#endif
+
     if (s_visible)
         DrawMainWindow();
 }
