@@ -202,7 +202,7 @@ int TextureGLES32::UploadToGPU(SurfaceInfoGLES32& surface, int levelMin)
                 bool isAlpha = (mip._sFormat != PacDXT1);
                 
                 std::vector<uint32_t> rgbaBuf(mip._w * mip._h);
-                const uint8_t* src = static_cast<const uint8_t*>(pixelData.Data());
+                const uint8_t* src = reinterpret_cast<const uint8_t*>(pixelData.Data());
                 int blockSize = isAlpha ? 16 : 8;
                 
                 for (int by = 0; by < blockH; ++by)
