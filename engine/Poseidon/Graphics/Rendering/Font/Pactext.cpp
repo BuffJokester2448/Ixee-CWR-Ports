@@ -12,6 +12,10 @@
 #include <string.h>
 #include <Poseidon/Foundation/Containers/BoolArray.hpp>
 #include <Poseidon/Foundation/Framework/DebugLog.hpp>
+
+#define BCDEC_IMPLEMENTATION
+#include "../../../../../thirdparty/bcdec.h"
+#include <stdint.h>
 #include <Poseidon/Foundation/Framework/Log.hpp>
 #include <Poseidon/Foundation/Memory/FastAlloc.hpp>
 #include <Poseidon/Foundation/Strings/RString.hpp>
@@ -1146,8 +1150,56 @@ int PacLevelMem::LoadPaaDXT(QIStream& in, void* mem, const PacPalette* pal) cons
         AUTO_STATIC_ARRAY(char, temp, 256 * 256);
         temp.Resize(dSize);
         in.read(temp.Data(), dSize);
-        // decompress from temp to mem
-        DecompressDXT1(mem, temp.Data(), _w, _h);
+
+        // decompress from temp to mem using bcdec
+        int blockSize = (_sFormat == PacDXT1) ? 8 : 16;
+        int blockW = (_w + 3) / 4;
+        int blockH = (_h + 3) / 4;
+        const uint8_t* src = (const uint8_t*)temp.Data();
+        
+        for (int by = 0; by < blockH; ++by)
+        {
+            for (int bx = 0; bx < blockW; ++bx)
+            {
+                uint8_t rgba[4 * 4 * 4];
+                if (_sFormat == PacDXT1)
+                    bcdec_bc1(src, rgba, 4 * 4);
+                else if (_sFormat == PacDXT2 || _sFormat == PacDXT3)
+                    bcdec_bc2(src, rgba, 4 * 4);
+                else
+                    bcdec_bc3(src, rgba, 4 * 4);
+                
+                src += blockSize;
+                
+                // write to mem
+                for (int py = 0; py < 4; ++py)
+                {
+                    int y = by * 4 + py;
+                    if (y >= _h) continue;
+                    for (int px = 0; px < 4; ++px)
+                    {
+                        int x = bx * 4 + px;
+                        if (x >= _w) continue;
+                        
+                        const uint8_t* p = &rgba[(py * 4 + px) * 4];
+                        if (_dFormat == PacARGB8888)
+                        {
+                            uint8_t* dst = ((uint8_t*)mem) + (y * _pitch + x * 4);
+                            dst[0] = p[2]; // B
+                            dst[1] = p[1]; // G
+                            dst[2] = p[0]; // R
+                            dst[3] = p[3]; // A
+                        }
+                        else // default to PacARGB1555 for DXT1 fallback
+                        {
+                            uint16_t* dst = (uint16_t*)(((uint8_t*)mem) + (y * _pitch + x * 2));
+                            uint16_t c = ((p[3] >> 7) << 15) | ((p[0] >> 3) << 10) | ((p[1] >> 3) << 5) | (p[2] >> 3);
+                            *dst = c;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     return 0;
