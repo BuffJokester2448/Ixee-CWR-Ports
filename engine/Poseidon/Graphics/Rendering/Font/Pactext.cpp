@@ -402,7 +402,7 @@ static int DecodeLZW(QIStream& in, char* dst, long lensb, int byteW, int pitch, 
                 Fail("LZW: stream read failed");
                 return -1;
             }
-            csum += (char)c;
+            csum += (signed char)c;
             // save pixel
             if (!resPal)
             {
@@ -443,7 +443,7 @@ static int DecodeLZW(QIStream& in, char* dst, long lensb, int byteW, int pitch, 
             for (i = r - i, j += i; i <= j && lensb > 0; i++)
             {
                 c = (byte)text_buf[i & (N - 1)];
-                csum += (char)c;
+                csum += (signed char)c;
                 // save pixel
                 if (!resPal)
                 {

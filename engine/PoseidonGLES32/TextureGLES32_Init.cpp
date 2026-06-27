@@ -522,6 +522,8 @@ int SurfaceInfoGLES32::CreateSurface(const TextureDescGLES32& desc, PacFormat fo
     // makes the format immutable (no driver re-validation per upload), and
     // reports allocation failure once instead of per-mip.  Subsequent
     // pixel uploads use glTex(Compressed)SubImage2D in the loader.
+    // clear any pending GL errors so we only catch glTexStorage2D errors
+    while (glGetError() != GL_NO_ERROR) {}
     glTexStorage2D(GL_TEXTURE_2D, desc.nMipmaps, desc.internalFormat, desc.w, desc.h);
     GLenum allocErr = glGetError();
     if (allocErr != GL_NO_ERROR)
