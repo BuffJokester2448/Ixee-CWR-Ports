@@ -19,10 +19,33 @@ extern void SDLInput_BufferUICharEvent(const char* text);
 extern void SetSkipKeys(bool skip);
 #ifdef __ANDROID__
 extern void SDLInput_SetAbsoluteCursor(float x, float y);
-extern float g_mobileLeftJoyStartX, g_mobileLeftJoyStartY, g_mobileLeftJoyCurrX, g_mobileLeftJoyCurrY;
-extern bool g_mobileLeftJoyActive;
-extern float g_mobileRightJoyStartX, g_mobileRightJoyStartY, g_mobileRightJoyCurrX, g_mobileRightJoyCurrY;
-extern bool g_mobileRightJoyActive;
+extern void SDLInput_BufferMouseWheel(float dy);
+
+enum {
+    VB_WASD = 1,
+    VB_LOOK = 2,
+    VB_FIRE_LOOK = 3,
+    VB_ADS_LOOK = 4,
+    VB_ACTION = 5,
+    VB_KEY = 6,
+    VB_ZOOM_LOOK = 7
+};
+
+struct VirtualButtonDef {
+    const char* name;
+    float x, y, r;
+    int type;
+    int data; 
+};
+
+extern VirtualButtonDef g_mobileButtons[];
+extern const int g_numMobileButtons;
+
+struct VirtualTouchRenderState {
+    bool active;
+    float currX, currY;
+};
+extern VirtualTouchRenderState g_mobileRenderState[32];
 #endif
 
 // SDL event-pump helper used by EngineGLES32.
@@ -42,9 +65,14 @@ class SDLEventWindow
         SDL_FingerID id = -1;
         float startX = 0.0f, startY = 0.0f;
         float lastX = 0.0f, lastY = 0.0f;
-        bool isMove = false;
-        bool isLook = false;
         bool isMoving = false;
+        
+        int buttonId = -1;
+        bool isLook = false;
+        bool isMove = false;
+        bool isAction = false;
+        float actionScrollAccum = 0.0f;
+        
         bool moveW = false, moveA = false, moveS = false, moveD = false;
     };
     TouchState _touches[10];
@@ -322,33 +350,53 @@ class SDLEventWindow
                     t->startY = event.tfinger.y;
                     t->lastX = event.tfinger.x;
                     t->lastY = event.tfinger.y;
+                    t->buttonId = -1;
+                    t->isMoving = false;
+                    t->isLook = false;
+                    t->isMove = false;
+                    t->isAction = false;
+                    t->actionScrollAccum = 0.0f;
                     
                     if (GApp && GApp->IsInGameplay()) {
-                        if (event.tfinger.x < 0.5f) {
-                            t->isMove = true;
 #ifdef __ANDROID__
-                            g_mobileLeftJoyActive = true;
-                            g_mobileLeftJoyStartX = event.tfinger.x;
-                            g_mobileLeftJoyStartY = event.tfinger.y;
-                            g_mobileLeftJoyCurrX = event.tfinger.x;
-                            g_mobileLeftJoyCurrY = event.tfinger.y;
-#endif
-                        } else {
-                            t->isLook = true;
-#ifdef __ANDROID__
-                            g_mobileRightJoyActive = true;
-                            g_mobileRightJoyStartX = event.tfinger.x;
-                            g_mobileRightJoyStartY = event.tfinger.y;
-                            g_mobileRightJoyCurrX = event.tfinger.x;
-                            g_mobileRightJoyCurrY = event.tfinger.y;
-#endif
+                        float closestDist = 999.0f;
+                        int closestBtn = -1;
+                        for (int i=0; i<g_numMobileButtons; ++i) {
+                            float dx = event.tfinger.x - g_mobileButtons[i].x;
+                            float dy = (event.tfinger.y - g_mobileButtons[i].y) * _height / (float)_width;
+                            float distSq = dx*dx + dy*dy;
+                            if (distSq < g_mobileButtons[i].r * g_mobileButtons[i].r) {
+                                if (distSq < closestDist) {
+                                    closestDist = distSq;
+                                    closestBtn = i;
+                                }
+                            }
                         }
+                        
+                        if (closestBtn != -1) {
+                            t->buttonId = closestBtn;
+                            int type = g_mobileButtons[closestBtn].type;
+                            
+                            g_mobileRenderState[closestBtn].active = true;
+                            g_mobileRenderState[closestBtn].currX = event.tfinger.x;
+                            g_mobileRenderState[closestBtn].currY = event.tfinger.y;
+                            
+                            if (type == VB_WASD) t->isMove = true;
+                            else if (type == VB_LOOK) t->isLook = true;
+                            else if (type == VB_FIRE_LOOK) { t->isLook = true; SDLInput_BufferMouseButton(0, true); }
+                            else if (type == VB_ADS_LOOK) { t->isLook = true; SDLInput_BufferMouseButton(1, true); }
+                            else if (type == VB_ZOOM_LOOK) { t->isLook = true; SDLInput_BufferKeyEvent(SDL_SCANCODE_KP_PLUS, true, Poseidon::Foundation::GlobalTickCount()); }
+                            else if (type == VB_KEY) { SDLInput_BufferKeyEvent((SDL_Scancode)g_mobileButtons[closestBtn].data, true, Poseidon::Foundation::GlobalTickCount()); }
+                            else if (type == VB_ACTION) { t->isAction = true; }
+                        } else {
+                            if (event.tfinger.x < 0.5f) t->isMove = true;
+                            else t->isLook = true;
+                        }
+#endif
                     } else {
                         // Menus: Map absolute position
-                        float cx = (event.tfinger.x * 2.0f) - 1.0f;
-                        float cy = (event.tfinger.y * 2.0f) - 1.0f;
 #ifdef __ANDROID__
-                        SDLInput_SetAbsoluteCursor(cx, cy);
+                        SDLInput_SetAbsoluteCursor(event.tfinger.x, event.tfinger.y);
 #endif
                         SDLInput_BufferMouseButton(0, true);
                     }
@@ -359,15 +407,31 @@ class SDLEventWindow
                 TouchState* t = GetTouch(event.tfinger.fingerID);
                 if (t) {
                     if (GApp && GApp->IsInGameplay()) {
-                        if (t->isLook && !t->isMoving) {
+                        if (t->isLook && !t->isMoving && t->buttonId == -1) {
                             // a tap on the right side maps to a left click.
                             SDLInput_BufferMouseButton(0, true);
                             SDLInput_BufferMouseButton(0, false);
                         }
 #ifdef __ANDROID__
-                        if (t->isMove) g_mobileLeftJoyActive = false;
-                        if (t->isLook) g_mobileRightJoyActive = false;
+                        if (t->buttonId != -1) {
+                            g_mobileRenderState[t->buttonId].active = false;
+                            int type = g_mobileButtons[t->buttonId].type;
+                            if (type == VB_FIRE_LOOK) SDLInput_BufferMouseButton(0, false);
+                            else if (type == VB_ADS_LOOK) SDLInput_BufferMouseButton(1, false);
+                            else if (type == VB_ZOOM_LOOK) SDLInput_BufferKeyEvent(SDL_SCANCODE_KP_PLUS, false, Poseidon::Foundation::GlobalTickCount());
+                            else if (type == VB_KEY) SDLInput_BufferKeyEvent((SDL_Scancode)g_mobileButtons[t->buttonId].data, false, Poseidon::Foundation::GlobalTickCount());
+                            else if (type == VB_ACTION && !t->isMoving) {
+                                SDLInput_BufferKeyEvent(SDL_SCANCODE_RETURN, true, Poseidon::Foundation::GlobalTickCount());
+                                SDLInput_BufferKeyEvent(SDL_SCANCODE_RETURN, false, Poseidon::Foundation::GlobalTickCount());
+                            }
+                        }
 #endif
+                        if (t->isMove) {
+                            if (t->moveW) { SDLInput_BufferKeyEvent(SDL_SCANCODE_W, false, Poseidon::Foundation::GlobalTickCount()); t->moveW = false; }
+                            if (t->moveA) { SDLInput_BufferKeyEvent(SDL_SCANCODE_A, false, Poseidon::Foundation::GlobalTickCount()); t->moveA = false; }
+                            if (t->moveS) { SDLInput_BufferKeyEvent(SDL_SCANCODE_S, false, Poseidon::Foundation::GlobalTickCount()); t->moveS = false; }
+                            if (t->moveD) { SDLInput_BufferKeyEvent(SDL_SCANCODE_D, false, Poseidon::Foundation::GlobalTickCount()); t->moveD = false; }
+                        }
                     } else {
                         SDLInput_BufferMouseButton(0, false);
                     }
@@ -392,12 +456,16 @@ class SDLEventWindow
                     
                     if (GApp && GApp->IsInGameplay()) {
 #ifdef __ANDROID__
-                        if (t->isMove) {
-                            g_mobileLeftJoyCurrX = event.tfinger.x;
-                            g_mobileLeftJoyCurrY = event.tfinger.y;
-                        } else if (t->isLook) {
-                            g_mobileRightJoyCurrX = event.tfinger.x;
-                            g_mobileRightJoyCurrY = event.tfinger.y;
+                        if (t->buttonId != -1) {
+                            g_mobileRenderState[t->buttonId].currX = event.tfinger.x;
+                            g_mobileRenderState[t->buttonId].currY = event.tfinger.y;
+                        }
+                        
+                        if (t->isAction) {
+                            float scroll = dy * 30.0f; 
+                            t->actionScrollAccum -= scroll;
+                            if (t->actionScrollAccum > 1.0f) { SDLInput_BufferMouseWheel(1.0f); t->actionScrollAccum -= 1.0f; }
+                            if (t->actionScrollAccum < -1.0f) { SDLInput_BufferMouseWheel(-1.0f); t->actionScrollAccum += 1.0f; }
                         }
 #endif
                         if (t->isLook) {
@@ -405,10 +473,18 @@ class SDLEventWindow
                             float speedY = _height * 1.5f;
                             SDLInput_BufferMouseMotion(dx * speedX, dy * speedY);
                         } else if (t->isMove && t->isMoving) {
-                            bool wantW = distY < -0.05f;
-                            bool wantS = distY > 0.05f;
-                            bool wantA = distX < -0.05f;
-                            bool wantD = distX > 0.05f;
+                            float localY = distY;
+                            float localX = distX;
+#ifdef __ANDROID__
+                            if (t->buttonId != -1) {
+                                localY = event.tfinger.y - g_mobileButtons[t->buttonId].y;
+                                localX = event.tfinger.x - g_mobileButtons[t->buttonId].x;
+                            }
+#endif
+                            bool wantW = localY < -0.05f;
+                            bool wantS = localY > 0.05f;
+                            bool wantA = localX < -0.05f;
+                            bool wantD = localX > 0.05f;
                             
                             if (wantW != t->moveW) { SDLInput_BufferKeyEvent(SDL_SCANCODE_W, wantW, Poseidon::Foundation::GlobalTickCount()); t->moveW = wantW; }
                             if (wantA != t->moveA) { SDLInput_BufferKeyEvent(SDL_SCANCODE_A, wantA, Poseidon::Foundation::GlobalTickCount()); t->moveA = wantA; }
@@ -417,10 +493,8 @@ class SDLEventWindow
                         }
                     } else {
                         // Dragging in menus moves absolute cursor
-                        float cx = (event.tfinger.x * 2.0f) - 1.0f;
-                        float cy = (event.tfinger.y * 2.0f) - 1.0f;
 #ifdef __ANDROID__
-                        SDLInput_SetAbsoluteCursor(cx, cy);
+                        SDLInput_SetAbsoluteCursor(event.tfinger.x, event.tfinger.y);
 #endif
                     }
                 }

@@ -1641,10 +1641,31 @@ void ProcessEvent(const SDL_Event& event)
 } // namespace Poseidon::Dev
 
 #ifdef __ANDROID__
-extern float g_mobileLeftJoyStartX, g_mobileLeftJoyStartY, g_mobileLeftJoyCurrX, g_mobileLeftJoyCurrY;
-extern bool g_mobileLeftJoyActive;
-extern float g_mobileRightJoyStartX, g_mobileRightJoyStartY, g_mobileRightJoyCurrX, g_mobileRightJoyCurrY;
-extern bool g_mobileRightJoyActive;
+enum {
+    VB_WASD = 1,
+    VB_LOOK = 2,
+    VB_FIRE_LOOK = 3,
+    VB_ADS_LOOK = 4,
+    VB_ACTION = 5,
+    VB_KEY = 6,
+    VB_ZOOM_LOOK = 7
+};
+
+struct VirtualButtonDef {
+    const char* name;
+    float x, y, r;
+    int type;
+    int data; 
+};
+
+extern VirtualButtonDef g_mobileButtons[];
+extern const int g_numMobileButtons;
+
+struct VirtualTouchRenderState {
+    bool active;
+    float currX, currY;
+};
+extern VirtualTouchRenderState g_mobileRenderState[32];
 #endif
 
 namespace Poseidon::Dev {
@@ -1659,20 +1680,28 @@ static void DrawMobileControls() {
     float w = io.DisplaySize.x;
     float h = io.DisplaySize.y;
 
-    // Left Joystick
-    if (!::g_mobileLeftJoyActive) {
-        draw->AddCircleFilled(ImVec2(0.2f * w, 0.7f * h), 60.0f, IM_COL32(255, 255, 255, 40));
-    } else {
-        draw->AddCircleFilled(ImVec2(::g_mobileLeftJoyStartX * w, ::g_mobileLeftJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
-        draw->AddCircleFilled(ImVec2(::g_mobileLeftJoyCurrX * w, ::g_mobileLeftJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
-    }
-
-    // Right Joystick / Fire
-    if (!::g_mobileRightJoyActive) {
-        draw->AddCircleFilled(ImVec2(0.8f * w, 0.7f * h), 60.0f, IM_COL32(255, 255, 255, 40));
-    } else {
-        draw->AddCircleFilled(ImVec2(::g_mobileRightJoyStartX * w, ::g_mobileRightJoyStartY * h), 60.0f, IM_COL32(255, 255, 255, 60));
-        draw->AddCircleFilled(ImVec2(::g_mobileRightJoyCurrX * w, ::g_mobileRightJoyCurrY * h), 30.0f, IM_COL32(255, 255, 255, 120));
+    for (int i = 0; i < g_numMobileButtons; ++i) {
+        float bx = g_mobileButtons[i].x * w;
+        float by = g_mobileButtons[i].y * h;
+        float br = g_mobileButtons[i].r * h; // radius scales with height
+        
+        if (!::g_mobileRenderState[i].active) {
+            draw->AddCircleFilled(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 40));
+            draw->AddCircle(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 80));
+            ImVec2 txtSize = ImGui::CalcTextSize(g_mobileButtons[i].name);
+            draw->AddText(ImVec2(bx - txtSize.x*0.5f, by - txtSize.y*0.5f), IM_COL32(255, 255, 255, 200), g_mobileButtons[i].name);
+        } else {
+            draw->AddCircleFilled(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 60));
+            draw->AddCircle(ImVec2(bx, by), br, IM_COL32(255, 255, 255, 100));
+            float cx = ::g_mobileRenderState[i].currX * w;
+            float cy = ::g_mobileRenderState[i].currY * h;
+            
+            float dx = cx - bx; float dy = cy - by;
+            float dist = sqrt(dx*dx + dy*dy);
+            if (dist > br) { cx = bx + (dx/dist)*br; cy = by + (dy/dist)*br; }
+            
+            draw->AddCircleFilled(ImVec2(cx, cy), br * 0.6f, IM_COL32(255, 255, 255, 150));
+        }
     }
 }
 #endif

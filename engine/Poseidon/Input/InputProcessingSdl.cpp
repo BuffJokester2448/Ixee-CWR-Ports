@@ -34,13 +34,46 @@ extern World* ::Poseidon::GWorld;
 extern Engine* ::Poseidon::GEngine;
 
 #ifdef __ANDROID__
-float g_mobileLeftJoyStartX = 0, g_mobileLeftJoyStartY = 0;
-float g_mobileLeftJoyCurrX = 0, g_mobileLeftJoyCurrY = 0;
-bool g_mobileLeftJoyActive = false;
+enum {
+    VB_WASD = 1,
+    VB_LOOK = 2,
+    VB_FIRE_LOOK = 3,
+    VB_ADS_LOOK = 4,
+    VB_ACTION = 5,
+    VB_KEY = 6,
+    VB_ZOOM_LOOK = 7
+};
 
-float g_mobileRightJoyStartX = 0, g_mobileRightJoyStartY = 0;
-float g_mobileRightJoyCurrX = 0, g_mobileRightJoyCurrY = 0;
-bool g_mobileRightJoyActive = false;
+struct VirtualButtonDef {
+    const char* name;
+    float x, y, r;
+    int type;
+    int data; 
+};
+
+VirtualButtonDef g_mobileButtons[] = {
+    {"Move", 0.15f, 0.7f, 0.12f, VB_WASD, 0},
+    {"ADS", 0.08f, 0.35f, 0.06f, VB_ADS_LOOK, 0},
+    {"Zoom", 0.08f, 0.15f, 0.06f, VB_ZOOM_LOOK, 0},
+    {"Fire", 0.85f, 0.65f, 0.09f, VB_FIRE_LOOK, 0},
+    {"Action\n(Drag)", 0.82f, 0.45f, 0.06f, VB_ACTION, 0},
+    {"Reload", 0.95f, 0.35f, 0.05f, VB_KEY, SDL_SCANCODE_R},
+    {"Q", 0.93f, 0.65f, 0.04f, VB_KEY, SDL_SCANCODE_Q},
+    {"Crouch", 0.95f, 0.85f, 0.05f, VB_KEY, SDL_SCANCODE_Z},
+    {"Time", 0.70f, 0.08f, 0.04f, VB_KEY, SDL_SCANCODE_O},
+    {"Compass", 0.79f, 0.08f, 0.04f, VB_KEY, SDL_SCANCODE_K},
+    {"Map", 0.88f, 0.08f, 0.04f, VB_KEY, SDL_SCANCODE_M},
+    {"Menu", 0.96f, 0.08f, 0.03f, VB_KEY, SDL_SCANCODE_ESCAPE},
+    {"Bino", 0.82f, 0.20f, 0.04f, VB_KEY, SDL_SCANCODE_B},
+    {"Firemode", 0.95f, 0.20f, 0.04f, VB_KEY, SDL_SCANCODE_F},
+};
+extern const int g_numMobileButtons = sizeof(g_mobileButtons) / sizeof(g_mobileButtons[0]);
+
+struct VirtualTouchRenderState {
+    bool active = false;
+    float currX = 0, currY = 0;
+};
+VirtualTouchRenderState g_mobileRenderState[32];
 #endif
 
 // UI key event dispatch — routes SDL key events to World::DoKeyDown/DoKeyUp
@@ -224,8 +257,27 @@ void SDLInput_BufferMouseWheel(float dy)
     GInput.mouse.BufferWheel(dy);
 }
 
-void SDLInput_SetAbsoluteCursor(float cx, float cy)
+void SDLInput_SetAbsoluteCursor(float x, float y)
 {
+    float cx = (x * 2.0f) - 1.0f;
+    float cy = (y * 2.0f) - 1.0f;
+    
+    if (::Poseidon::GEngine)
+    {
+        AspectSettings as;
+        ::Poseidon::GEngine->GetAspectSettings(as);
+        float screenTopX = as.uiTopLeftX / (as.uiTopLeftX - as.uiBottomRightX);
+        float screenTopY = as.uiTopLeftY / (as.uiTopLeftY - as.uiBottomRightY);
+        float screenBotX = (1 - as.uiTopLeftX) / (as.uiBottomRightX - as.uiTopLeftX);
+        float screenBotY = (1 - as.uiTopLeftY) / (as.uiBottomRightY - as.uiTopLeftY);
+        float minX = screenTopX * 2 - 1;
+        float maxX = screenBotX * 2 - 1;
+        float minY = screenTopY * 2 - 1;
+        float maxY = screenBotY * 2 - 1;
+        cx = minX + x * (maxX - minX);
+        cy = minY + y * (maxY - minY);
+    }
+    
     GInput.cursor.cursorX = cx;
     GInput.cursor.cursorY = cy;
     GInput.mouse.cursorLastActive = Glob.uiTime;
