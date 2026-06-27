@@ -39,6 +39,11 @@ jobs:
           vcpkgDirectory: ${{ github.workspace }}/vcpkg
           vcpkgJsonGlob: '**/vcpkg.json'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
       - name: Build APK (Debug)
         working-directory: android
         run: gradle assembleDebug
