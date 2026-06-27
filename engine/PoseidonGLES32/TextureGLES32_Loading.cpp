@@ -12,7 +12,6 @@
 #include <vector>
 
 #ifdef __ANDROID__
-#define BCDEC_IMPLEMENTATION
 #include "../../../thirdparty/bcdec.h"
 #include "../../thirdparty/etcpak/ProcessRGB.hpp"
 #endif
