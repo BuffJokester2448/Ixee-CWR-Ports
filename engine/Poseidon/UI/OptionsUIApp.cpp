@@ -117,7 +117,11 @@ namespace Poseidon
 
 RString GetAppVersion()
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(__aarch64__) || defined(_M_ARM64)
+    const char* platform = "arm64";
+#elif defined(__arm__) || defined(_M_ARM)
+    const char* platform = "arm";
+#elif defined(__x86_64__) || defined(_M_X64)
     const char* platform = "x64";
 #else
     const char* platform = "x86";
