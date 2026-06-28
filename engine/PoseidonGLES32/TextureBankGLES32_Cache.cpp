@@ -363,34 +363,42 @@ int TextBankGLES32::FreeTextureMemory()
         return static_cast<int>(available);
     };
 
+    // query and log once per run
+    static bool s_budgetInitialized = false;
+    static bool s_hasNvidia = false;
+    static bool s_hasAmd = false;
+    if (!s_budgetInitialized)
+    {
+        s_hasNvidia = HasGlExtension("GL_NVX_gpu_memory_info");
+        s_hasAmd = HasGlExtension("GL_ATI_meminfo");
+        s_budgetInitialized = true;
+    }
+
     // Try GL_NVX_gpu_memory_info (NVIDIA)
-    if (HasGlExtension("GL_NVX_gpu_memory_info"))
+    if (s_hasNvidia)
     {
         GLint totalMemKB = 0;
         glGetIntegerv(0x9048, &totalMemKB); // GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX
         GLenum err = glGetError();
         if (err == GL_NO_ERROR && totalMemKB >= MinSaneMemKB)
         {
-            LOG_TRACE(Graphics, "GLES32: NVIDIA VRAM: {} MB", totalMemKB / 1024);
             return capBudget(totalMemKB);
         }
     }
 
     // Try GL_ATI_meminfo (AMD)
-    if (HasGlExtension("GL_ATI_meminfo"))
+    if (s_hasAmd)
     {
         GLint atiInfo[4] = {};
         glGetIntegerv(0x87FC, atiInfo); // TEXTURE_FREE_MEMORY_ATI
         GLenum err = glGetError();
         if (err == GL_NO_ERROR && atiInfo[0] >= MinSaneMemKB)
         {
-            LOG_DEBUG(Graphics, "GLES32: AMD free VRAM: {} MB", atiInfo[0] / 1024);
             return capBudget(atiInfo[0]);
         }
     }
 
     // Fallback: 256 MB
-    LOG_DEBUG(Graphics, "GLES32: Using fallback VRAM budget: 256 MB");
     return 256 * 1024 * 1024;
 }
 
