@@ -80,6 +80,8 @@ public:
 	void OnLButtonDown(float x, float y) override;
 	void OnLButtonUp(float x, float y) override;
 	void OnMouseMove(float x, float y, bool active = true) override;
+	bool OnSetFocus(bool up = true, bool def = false) override;
+	bool OnKillFocus() override;
 
 protected:
 	bool IsMulti() const override;
@@ -868,6 +870,8 @@ public:
 	void OnLButtonDown(float x, float y) override;
 	void OnLButtonUp(float x, float y) override;
 	void OnMouseMove(float x, float y, bool active = true) override;
+	bool OnSetFocus(bool up = true, bool def = false) override;
+	bool OnKillFocus() override;
 
 protected:
 	bool IsMulti() const override;

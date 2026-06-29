@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <SDL3/SDL.h>
 #include <Poseidon/UI/Controls/UIControls.hpp>
 #include <Poseidon/Input/InputSubsystem.hpp>
 #include <Poseidon/Graphics/Core/Engine.hpp>
@@ -624,6 +625,30 @@ void C3DEdit::OnMouseMove(float x, float y, bool active)
         _blockEnd = FindPos(_u, _v);
         EnsureVisible(_blockEnd);
     }
+}
+
+bool C3DEdit::OnSetFocus(bool up, bool def)
+{
+    bool ret = Control3D::OnSetFocus(up, def);
+    if (ret)
+    {
+#ifdef __ANDROID__
+        SDL_StartTextInput(SDL_GetKeyboardFocus());
+#endif
+    }
+    return ret;
+}
+
+bool C3DEdit::OnKillFocus()
+{
+    bool ret = Control3D::OnKillFocus();
+    if (ret)
+    {
+#ifdef __ANDROID__
+        SDL_StopTextInput(SDL_GetKeyboardFocus());
+#endif
+    }
+    return ret;
 }
 
 int C3DEdit::FindPos(float x, float y)

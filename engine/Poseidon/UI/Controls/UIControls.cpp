@@ -2084,6 +2084,31 @@ void CEdit::OnMouseMove(float x, float y, bool active)
     }
 }
 
+bool CEdit::OnSetFocus(bool up, bool def)
+{
+    bool ret = Control::OnSetFocus(up, def);
+    if (ret)
+    {
+#ifdef __ANDROID__
+        SDL_StartTextInput(SDL_GetKeyboardFocus());
+#endif
+    }
+    return ret;
+}
+
+bool CEdit::OnKillFocus()
+{
+    bool ret = Control::OnKillFocus();
+    if (ret)
+    {
+#ifdef __ANDROID__
+        SDL_StopTextInput(SDL_GetKeyboardFocus());
+#endif
+    }
+    return ret;
+}
+
+
 void CEdit::EnsureVisible(int pos)
 {
     float size = _scale * _size;
