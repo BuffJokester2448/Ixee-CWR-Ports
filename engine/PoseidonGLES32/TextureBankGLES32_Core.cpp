@@ -461,6 +461,7 @@ Texture* TextBankGLES32::CreateDynamic(int w, int h, const void* rgba, uint32_t 
         LOG_WARN(Graphics, "GLES32: Failed to create dynamic texture {}x{}", w, h);
         return nullptr;
     }
+    _totalAllocated += tex->_surface.SizeUsed();
     return tex;
 }
 

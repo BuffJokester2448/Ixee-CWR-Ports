@@ -11,6 +11,7 @@
 #include <Poseidon/Graphics/Rendering/Frame/Frame.hpp>
 #include <Poseidon/Graphics/Shared/ScreenshotWriter.hpp>
 #include <Poseidon/Dev/Debug/DebugOverlay.hpp>
+#include <vector>
 
 using namespace Poseidon::Dev;
 
@@ -75,37 +76,53 @@ void VertexBufferGLES32::CopyVertices(const Shape& src)
         return;
 
     glBindBuffer(GL_ARRAY_BUFFER, _vbo);
-    // The map-flag combination is selected by the named helper.  There
-    // is no API exposed by `Poseidon::render::buf` that maps a static buffer with
-    // INVALIDATE (B-028) or a dynamic buffer without it — picking the
-    // wrong helper is the only way to land in the bug class, and the
-    // helper name makes the mistake glaring.  See
-    // `engine/Poseidon/Graphics/Core/GLBufferMap.hpp`.
-    void* mapped = _dynamic ? Poseidon::render::buf::MapDynamicWriteInvalidate(GL_ARRAY_BUFFER, 0, _vertexCount * sizeof(SVertex))
-                            : Poseidon::render::buf::MapStaticWriteOnce(GL_ARRAY_BUFFER, _vertexCount * sizeof(SVertex));
-    SVertex* sData = static_cast<SVertex*>(mapped);
-    if (!sData)
+    if (_dynamic)
     {
-        LOG_ERROR(Graphics, "GLES32: VBO map failed");
-        return;
-    }
+        void* mapped = Poseidon::render::buf::MapDynamicWriteInvalidate(GL_ARRAY_BUFFER, 0, _vertexCount * sizeof(SVertex));
+        SVertex* sData = static_cast<SVertex*>(mapped);
+        if (!sData)
+        {
+            LOG_ERROR(Graphics, "GLES32: VBO map failed");
+            return;
+        }
 
-    const UVPair* uv = &src.UV(0);
-    const Vector3* pos = &src.Pos(0);
-    const Vector3* norm = &src.Norm(0);
-    for (int i = src.NVertex(); --i >= 0;)
+        const UVPair* uv = &src.UV(0);
+        const Vector3* pos = &src.Pos(0);
+        const Vector3* norm = &src.Norm(0);
+        for (int i = src.NVertex(); --i >= 0;)
+        {
+            sData->pos = Vector3P(pos->X(), pos->Y(), pos->Z());
+            // Normals are negated (matches D3D11 convention)
+            sData->norm = Vector3P(-norm->X(), -norm->Y(), -norm->Z());
+            pos++;
+            norm++;
+            sData->t0 = *uv;
+            uv++;
+            sData++;
+        }
+
+        glUnmapBuffer(GL_ARRAY_BUFFER);
+    }
+    else
     {
-        sData->pos = Vector3P(pos->X(), pos->Y(), pos->Z());
-        // Normals are negated (matches D3D11 convention)
-        sData->norm = Vector3P(-norm->X(), -norm->Y(), -norm->Z());
-        pos++;
-        norm++;
-        sData->t0 = *uv;
-        uv++;
-        sData++;
+        // Use glBufferSubData for static updates to bypass glMapBufferRange synchronization bugs on Mali
+        std::vector<SVertex> tempVertices(_vertexCount);
+        SVertex* sData = tempVertices.data();
+        const UVPair* uv = &src.UV(0);
+        const Vector3* pos = &src.Pos(0);
+        const Vector3* norm = &src.Norm(0);
+        for (int i = _vertexCount; --i >= 0;)
+        {
+            sData->pos = Vector3P(pos->X(), pos->Y(), pos->Z());
+            sData->norm = Vector3P(-norm->X(), -norm->Y(), -norm->Z());
+            pos++;
+            norm++;
+            sData->t0 = *uv;
+            uv++;
+            sData++;
+        }
+        glBufferSubData(GL_ARRAY_BUFFER, 0, _vertexCount * sizeof(SVertex), tempVertices.data());
     }
-
-    glUnmapBuffer(GL_ARRAY_BUFFER);
 }
 
 bool VertexBufferGLES32::Init(const Shape& src, VBType type)
