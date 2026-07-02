@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+using namespace Poseidon;
 #include <climits>
 #include <cstdint>
 #include <cstdio>
@@ -7,30 +8,29 @@
 #include <Poseidon/Network/RateLimit.hpp>
 #include <Poseidon/Network/WireBounds.hpp>
 
-using namespace Poseidon;
+// Transport-layer hardening for the dispatch redesign (network-security-gaps.md
+// N-SEC-10/12/13/14/16). The transport handlers can't be unit-instantiated without
+// the live UDP stack, so the non-trivial bounds math is extracted into WireBounds
+// predicates the handlers call, and these tests bind to those predicates.
 
-// Transport-layer bounds regressions for the dispatch redesign. The transport
-// handlers can't be unit-instantiated without the live UDP stack, so the
-// non-trivial bounds math is extracted into WireBounds / RateLimit predicates the
-// handlers call, and these tests bind to those predicates at their boundaries.
-
-TEST_CASE("big-ack word count is bounded by the packet, not by oldest/newest", "[network][transport]")
+TEST_CASE("N-SEC-13: big-ack word count is bounded by the packet, not by oldest/newest", "[network][transport][oob]")
 {
     // BigAckPacket is a 16-byte header followed by a flexible unsigned32 ack[].
     const int header = 16;
     const int word = 4;
 
     // A 24-byte packet carries exactly (24-16)/4 = 2 ack words, regardless of the
-    // oldest/newest fields that used to bound the read loop.
+    // attacker-supplied oldest/newest that used to bound the read loop.
     REQUIRE(WireBounds::TrailingElementCount(24, header, word) == 2);
     REQUIRE(WireBounds::TrailingElementCount(16, header, word) == 0); // header only
-    // The count is derived from the bytes actually present, so the read loop is
-    // capped at the words really in the packet.
+    // Broken-state delta: the loop ran (newest-oldest+1)/32 times reading ack[aPtr++];
+    // a header-only packet claiming a huge newest read far past the buffer. The count
+    // here caps the loop at the words actually present.
     REQUIRE(WireBounds::TrailingElementCount(8, header, word) == 0);  // short -> nothing
     REQUIRE(WireBounds::TrailingElementCount(-1, header, word) == 0); // garbage length
 }
 
-TEST_CASE("serial window rejects far-out serials, accepts in-window", "[network][transport]")
+TEST_CASE("N-SEC-12: serial window rejects far-out serials, accepts in-window", "[network][transport][dos]")
 {
     const uint32_t lo = 1000; // ackMaskMin
     const uint32_t hi = 1050; // inputMax
@@ -41,45 +41,48 @@ TEST_CASE("serial window rejects far-out serials, accepts in-window", "[network]
     REQUIRE(WireBounds::SerialWithinSpan(hi + 100, lo, hi, span));
     REQUIRE(WireBounds::SerialWithinSpan(lo - 100, lo, hi, span));
 
-    // Serials far outside the window are rejected, keeping the ack-mask growth and
-    // the catch-up loop bounded.
+    // Broken-state delta: ackMask.on(ser) grew ~(ser-min)/32 words and the catch-up
+    // loop spun (ser-inputMax) times; a serial far ahead/behind is now rejected.
     REQUIRE_FALSE(WireBounds::SerialWithinSpan(hi + 1000000, lo, hi, span));
     REQUIRE_FALSE(WireBounds::SerialWithinSpan(lo - 1000000, lo, hi, span));
     // Wrap-around: a serial just below 0 relative to a small window is "behind", not ahead.
     REQUIRE_FALSE(WireBounds::SerialWithinSpan(0xFFFFFFFFu, lo, hi, span));
 }
 
-TEST_CASE("NMTMessages batch sub-count is bounded by remaining bytes", "[network][transport]")
+TEST_CASE("N-SEC-07: NMTMessages batch sub-count is bounded by remaining bytes", "[network][transport][dos]")
 {
     // DecodeMessage reads a sub-message count n off the wire and loops over it. Each
     // sub-message is at least its 1-byte type varint, so n can never legitimately
-    // exceed the bytes left; the handler rejects a larger n via this predicate.
+    // exceed the bytes left; the handler now rejects a crafted n via this predicate.
     const int remaining = 12;
     REQUIRE(WireBounds::DecodeCountFits(12, remaining)); // every byte a 1-byte sub-msg
     REQUIRE(WireBounds::DecodeCountFits(0, remaining));
-    // A count with no relation to the remaining bytes is rejected before the loop runs.
+    // Broken-state delta: an uncapped n (e.g. 0x7FFFFFFF) drove the loop far past the
+    // packet body; it is now rejected before the first iteration.
     REQUIRE_FALSE(WireBounds::DecodeCountFits(0x7FFFFFFF, remaining));
     REQUIRE_FALSE(WireBounds::DecodeCountFits(13, remaining));
     REQUIRE_FALSE(WireBounds::DecodeCountFits(-1, remaining));
 }
 
-TEST_CASE("a datagram shorter than the trailing CRC is rejected", "[network][transport]")
+TEST_CASE("N-SEC-16: a datagram shorter than the trailing CRC is rejected", "[network][transport][oob]")
 {
-    // The trailing CRC int is read only when the datagram is long enough to hold it.
+    // OnServerUserMessage does `bufferSize -= sizeof(int); crc = *(int*)(buffer+bufferSize)`.
+    // The guard requires room for the CRC int before subtracting (RangeInBounds).
     REQUIRE(WireBounds::RangeInBounds(0, (int)sizeof(int), 4));       // exactly the CRC
     REQUIRE(WireBounds::RangeInBounds(0, (int)sizeof(int), 8));       // body + CRC
-    REQUIRE_FALSE(WireBounds::RangeInBounds(0, (int)sizeof(int), 3)); // too short
+    REQUIRE_FALSE(WireBounds::RangeInBounds(0, (int)sizeof(int), 3)); // too short -> OOB read
     REQUIRE_FALSE(WireBounds::RangeInBounds(0, (int)sizeof(int), 0));
 }
 
-TEST_CASE("enum-reply token bucket caps reflected replies", "[network][transport]")
+TEST_CASE("N-SEC-09: enum-reply token bucket caps reflected replies", "[network][transport][dos]")
 {
-    // The enum responder rate-limits replies: at most `burst` in a burst and
-    // `ratePerSec` sustained, so reply traffic stays bounded.
+    // The enum responder answers spoofable requests with a reply larger than the
+    // request. The bucket lets at most `burst` through in a flood and `ratePerSec`
+    // sustained, so the server can't be a useful UDP amplifier.
     RateLimit::TokenBucket b;
     b.configure(/*ratePerSec*/ 50.0, /*burst*/ 100.0);
 
-    // A burst at the same instant drains exactly `burst` replies, then is throttled.
+    // A flood at the same instant drains exactly `burst` replies, then is throttled.
     int allowed = 0;
     for (int i = 0; i < 1000; ++i)
     {
@@ -89,6 +92,8 @@ TEST_CASE("enum-reply token bucket caps reflected replies", "[network][transport
         }
     }
     REQUIRE(allowed == 100);
+    // Broken-state delta: without the bucket every one of the 1000 spoofed requests
+    // reflected a reply; now only the burst did.
     REQUIRE_FALSE(b.tryConsume(1000));
 
     // One second later it has refilled ratePerSec tokens (50), no more.
@@ -116,7 +121,7 @@ TEST_CASE("enum-reply token bucket caps reflected replies", "[network][transport
     REQUIRE(allPassed);
 }
 
-TEST_CASE("token bucket handles tick-count wraparound", "[network][transport]")
+TEST_CASE("N-SEC-09: token bucket handles tick-count wraparound", "[network][transport][dos]")
 {
     RateLimit::TokenBucket b;
     b.configure(50.0, 100.0);
@@ -133,17 +138,16 @@ TEST_CASE("token bucket handles tick-count wraparound", "[network][transport]")
             ++allowed;
         }
     }
-    REQUIRE(allowed < 100); // the wrap does not open the bucket
+    REQUIRE(allowed < 100); // not flooded open by the wrap
 }
 
-TEST_CASE("a wire server name is rendered as data, never as a format", "[network][transport]")
+TEST_CASE("N-SEC-10: a wire server name is rendered as data, never as a format", "[network][transport][format]")
 {
-    // The enumeration handler formats the wire-supplied server name as data
-    // (snprintf(dst, n, "%s", name)), so conversion specifiers in the name are
-    // shown literally rather than interpreted.
-    const char* name = "%s%s%s%n";
+    // The enumeration handler now does snprintf(dst, n, "%s", s->name) instead of
+    // snprintf(dst, n, s->name, addr) — a malicious "%s%n" name is shown literally.
+    const char* malicious = "%s%s%s%n";
     char out[64];
-    int n = snprintf(out, sizeof(out), "%s", name);
-    REQUIRE(n == (int)strlen(name));
+    int n = snprintf(out, sizeof(out), "%s", malicious);
+    REQUIRE(n == (int)strlen(malicious));
     REQUIRE(strcmp(out, "%s%s%s%n") == 0); // conversion specifiers were not interpreted
 }

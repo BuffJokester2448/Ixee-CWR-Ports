@@ -354,7 +354,7 @@ NetStatus serverReceive(NetMessage* msg, NetStatus event, void* data)
             if (closing)
             { // the last message-part to be merged..
                 if (!sup->m_splitUrgent || !sup->m_lastSplitUrgent)
-                { // closing fragment with no opener — drop it, don't deref null
+                { // closing fragment with no opener — drop it, don't deref null (N-SEC-14)
                     _server->leaveRcv();
                     return nsNoMoreCallbacks;
                 }
@@ -381,7 +381,7 @@ NetStatus serverReceive(NetMessage* msg, NetStatus event, void* data)
         else if (closing)
         { // the last message-part to be merged..
             if (!sup->m_split || !sup->m_lastSplit)
-            { // closing fragment with no opener — drop it, don't deref null
+            { // closing fragment with no opener — drop it, don't deref null (N-SEC-14)
                 _server->leaveRcv();
                 return nsNoMoreCallbacks;
             }
@@ -457,8 +457,9 @@ NetStatus ctrlReceive(NetMessage* msg, NetStatus event, void* data)
             {
                 EnumPacket* ep = (EnumPacket*)msg->getData();
                 _server->enterUsr();
-                // The reply is larger than the request; rate-limit the reflected
-                // reply so the server's reply traffic stays bounded. Checked under usrCs.
+                // The request source is spoofable and the reply is larger than the
+                // request; rate-limit the reflected reply so the server can't be used
+                // as a UDP amplifier (N-SEC-09). Checked under usrCs.
                 if (ep->magicApplication == _server->magicApp &&
                     _server->_enumReplyBucket.tryConsume((uint32_t)GetTickCount()))
                 {
@@ -775,8 +776,8 @@ NetStatus enumReceive(NetMessage* msg, NetStatus event, void* data)
 
                 NetSessionDescription& desc = _enum->_sessions[iFound];
                 // s->name is the remote server's wire-supplied name; it must be copied as
-                // data, never used as the printf format, so conversion specifiers in the
-                // name are shown literally rather than interpreted.
+                // data, never used as the printf format (a "%s%n" name would be a format-
+                // string attack on the enumerating client) (N-SEC-10).
                 snprintf(desc.name, sizeof(desc.name), "%s", s->name);
                 desc.actualVersion = s->actualVersion;
                 desc.requiredVersion = s->requiredVersion;
@@ -1823,8 +1824,8 @@ NetServer::NetServer()
     botId = 0;
     magicApp = 0;
     // Cap reflected enum replies: 100 burst, 50/s sustained — orders of magnitude
-    // above a legitimate browser's one-request-per-refresh, keeping reply traffic
-    // bounded.
+    // above a legitimate browser's one-request-per-refresh, far below any useful
+    // amplification flood (N-SEC-09).
     _enumReplyBucket.configure(/*ratePerSec*/ 50.0, /*burst*/ 100.0);
 #ifdef NET_LOG_INFO
     oldLatency = -1;

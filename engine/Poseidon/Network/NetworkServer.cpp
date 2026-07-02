@@ -857,8 +857,8 @@ void OnServerUserMessage(int from, char* buffer, int bufferSize, void* context)
 {
     NetworkServer* server = (NetworkServer*)context;
 
-    // A datagram must be long enough to contain its trailing CRC int; otherwise the
-    // size below would go negative. Drop it.
+    // A datagram shorter than the trailing CRC would make bufferSize go negative
+    // and read the CRC int out of bounds; drop it (N-SEC-16).
     if (bufferSize < (int)sizeof(int))
     {
         return;
